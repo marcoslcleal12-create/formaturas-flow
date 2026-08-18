@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { 
   User, 
   Package, 
@@ -41,6 +42,8 @@ import {
 } from "@/lib/turma-pacotes";
 import { apenasDigitos, saveClienteSession } from "@/lib/aluno-login";
 import { CLAUSULAS_PADRAO, EMPRESA } from "@/lib/contrato-modelo";
+import { realizarAdesaoPublica } from "@/lib/alunos.functions";
+
 
 export const Route = createFileRoute("/adesao/$turmaId")({
   head: () => ({
@@ -67,6 +70,7 @@ const formDadosPessoaisSchema = z.object({
 function AdesaoTurmaPage() {
   const { turmaId } = Route.useParams();
   const navigate = useNavigate();
+  const realizarAdesao = useServerFn(realizarAdesaoPublica);
 
   // Etapa atual: 1 (Dados), 2 (Pacote e Parcelamento), 3 (Uso de Imagem), 4 (Contrato e Aceite)
   const [etapa, setEtapa] = useState<1 | 2 | 3 | 4>(1);
@@ -130,33 +134,6 @@ function AdesaoTurmaPage() {
       const cpfLimpo = apenasDigitos(dadosPessoais.cpf);
       if (cpfLimpo.length !== 11) throw new Error("CPF deve ter 11 dígitos");
 
-      // 1. Cadastra ou atualiza o aluno
-      const { data: aluno, error: alunoError } = await supabase
-        .from("alunos")
-        .insert({
-          turma_id: turma.id,
-          nome_completo: dadosPessoais.nome_completo.trim(),
-          cpf: cpfLimpo,
-          rg: dadosPessoais.rg?.trim() || null,
-          telefone: dadosPessoais.telefone.trim(),
-          whatsapp: dadosPessoais.whatsapp.trim(),
-          email: dadosPessoais.email.trim(),
-          endereco: dadosPessoais.endereco.trim(),
-          cidade: dadosPessoais.cidade.trim(),
-          status: "ativo",
-        })
-        .select()
-        .single();
-
-      if (alunoError) {
-        if (alunoError.message.includes("unique") || alunoError.message.includes("cpf")) {
-          throw new Error("Já existe um formando cadastrado com este CPF nesta turma.");
-        }
-        throw alunoError;
-      }
-
-      // 2. Monta o texto do contrato com os dados completos
-      const hojeIso = new Date().toISOString().slice(0, 10);
       const resumoParcelas = parcelasCalculadas
         .map((p) => `${p.numero}ª Parcela - Vencimento: ${p.vencimento} - ${brl(p.valor)}`)
         .join("\n");
@@ -188,56 +165,37 @@ ${CLAUSULAS_PADRAO}
 
 Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR")}.`;
 
-      // 3. Cadastra o contrato
-      const { data: contrato, error: contratoError } = await supabase
-        .from("contratos")
-        .insert({
-          aluno_id: aluno.id,
-          turma_id: turma.id,
+      const res = await realizarAdesao({
+        data: {
+          turmaId: turma.id,
+          dadosPessoais: {
+            ...dadosPessoais,
+            cpf: cpfLimpo,
+          },
           pacote: pacoteSelecionado.nome,
-          valor_total: pacoteSelecionado.investimento,
-          desconto: 0,
-          valor_entrada: 0,
-          num_parcelas: numParcelas,
-          dia_vencimento: diaVencimento,
-          forma_pagamento: "boleto",
-          autoriza_imagem: autorizaImagem === "sim",
-          status: "ativo",
-          data_contrato: hojeIso,
-          texto_contrato: textoContratoCompleto,
-        })
-        .select()
-        .single();
-
-      if (contratoError) throw contratoError;
-
-      // 4. Cadastra as parcelas no banco
-      const parcelasInsert = parcelasCalculadas.map((p) => ({
-        contrato_id: contrato.id,
-        numero: p.numero,
-        valor: p.valor,
-        valor_pago: 0,
-        vencimento: p.vencimento,
-        status: "pendente",
-        forma_pagamento: "boleto",
-      }));
-
-      const { error: parcelasError } = await supabase
-        .from("parcelas")
-        .insert(parcelasInsert);
-
-      if (parcelasError) throw parcelasError;
-
-      // 5. Salva sessão no navegador para login automático do formando
-      saveClienteSession({
-        cpf: cpfLimpo,
-        nome: aluno.nome_completo,
-        tipo: "aluno",
-        email: aluno.email || `${cpfLimpo}@formando.jmformaturas.app`,
-        alunoId: aluno.id,
+          valorTotal: pacoteSelecionado.investimento,
+          numParcelas,
+          diaVencimento,
+          autorizaImagem: autorizaImagem === "sim",
+          textoContratoCompleto,
+          parcelas: parcelasCalculadas.map((p) => ({
+            numero: p.numero,
+            valor: p.valor,
+            vencimento: p.vencimento,
+          })),
+        },
       });
 
-      return aluno;
+      // Salva sessão local para autenticação imediata
+      saveClienteSession({
+        cpf: res.cpf,
+        nome: res.nome,
+        tipo: "aluno",
+        email: res.email,
+        alunoId: res.alunoId,
+      });
+
+      return res;
     },
     onSuccess: () => {
       toast.success("Adesão realizada com sucesso! Bem-vindo à sua área exclusiva.");
