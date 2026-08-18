@@ -205,7 +205,6 @@ function TurmasPage() {
                 <Field name="cidade" label="Cidade" placeholder="Ex: São Paulo - SP" />
                 <Field name="semestre" label="Semestre" placeholder="Ex: 2026/2" />
               </div>
-              <Field name="previsao_formatura" label="Previsão de formatura" type="date" />
             </form>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpenCreate(false)}>

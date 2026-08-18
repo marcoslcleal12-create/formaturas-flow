@@ -97,7 +97,6 @@ function openNovaTurmaModal() {
           ${field({ name: 'cidade', label: 'Cidade' })}
           ${field({ name: 'semestre', label: 'Semestre', placeholder: '2026/2' })}
         </div>
-        ${field({ name: 'previsao_formatura', label: 'Previsão de formatura', type: 'date' })}
       </form>
     `,
     footer: `
@@ -119,7 +118,6 @@ function openNovaTurmaModal() {
         const faculdade = form.faculdade.value.trim();
         const cidade = form.cidade.value.trim() || null;
         const semestre = form.semestre.value.trim() || null;
-        const previsao = form.previsao_formatura.value || null;
 
         if (!nome || !curso || !faculdade) {
           toast.error('Preencha os campos obrigatórios.');
@@ -135,7 +133,6 @@ function openNovaTurmaModal() {
             faculdade,
             cidade,
             semestre,
-            previsao_formatura: previsao,
           });
 
           if (error) throw error;
