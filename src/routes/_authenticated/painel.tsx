@@ -341,34 +341,52 @@ function PainelAluno() {
             </CardContent>
           </Card>
 
+          {/* Card Meus Dados */}
           <Card className="shadow-card">
             <CardHeader>
-              <CardTitle className="text-base">Meus dados</CardTitle>
+              <CardTitle className="text-base">Meus Dados Cadastrais</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <Info label="Nome" value={aluno.nome_completo} />
-              <Info label="CPF" value={aluno.cpf} />
+            <CardContent className="space-y-1.5 text-sm">
+              <Info label="Nome Completo" value={aluno.nome_completo} />
+              <Info label="CPF (Login)" value={aluno.cpf} />
+              {aluno.rg && <Info label="RG" value={aluno.rg} />}
+              <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
               <Info label="WhatsApp" value={aluno.whatsapp} />
               <Info label="E-mail" value={aluno.email} />
+              <Info label="Endereço" value={aluno.endereco} />
+              <Info label="Cidade" value={aluno.cidade} />
             </CardContent>
           </Card>
 
+          {/* Card Minha Turma e Opções */}
           <Card className="shadow-card">
             <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="text-base">Minha turma</CardTitle>
+              <CardTitle className="text-base">Minha Turma & Opções</CardTitle>
               <Badge variant="secondary">{aluno.status}</Badge>
             </CardHeader>
-            <CardContent className="space-y-1 text-sm">
+            <CardContent className="space-y-1.5 text-sm">
               <Info label="Turma" value={aluno.turmas?.nome} />
               <Info label="Curso" value={aluno.turmas?.curso} />
               <Info label="Faculdade" value={aluno.turmas?.faculdade} />
               <Info label="Semestre" value={aluno.turmas?.semestre} />
+              {contrato && (
+                <>
+                  <Info
+                    label="Uso de Imagem"
+                    value={contrato.autoriza_imagem !== false ? "Sim, autorizado para divulgação" : "Não autorizado"}
+                  />
+                  <Info
+                    label="Vencimento dos Boletos"
+                    value={`Todo dia ${contrato.dia_vencimento || 10}`}
+                  />
+                </>
+              )}
             </CardContent>
           </Card>
 
           <Card className="shadow-card sm:col-span-2">
             <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="text-base">Acompanhamento Financeiro</CardTitle>
+              <CardTitle className="text-base">Acompanhamento Financeiro (Boletos)</CardTitle>
               {contrato && <Badge variant="secondary">{contrato.pacote}</Badge>}
             </CardHeader>
             <CardContent className="space-y-3 text-sm">

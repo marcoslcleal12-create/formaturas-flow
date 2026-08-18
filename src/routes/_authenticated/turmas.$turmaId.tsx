@@ -1,7 +1,25 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { ArrowLeft, Plus, Edit, Trash2, MoreVertical, KeyRound, User, Phone, Mail, GraduationCap } from "lucide-react";
+import { useState, useEffect } from "react";
+import { 
+  ArrowLeft, 
+  Plus, 
+  Edit, 
+  Trash2, 
+  MoreVertical, 
+  KeyRound, 
+  User, 
+  Phone, 
+  Mail, 
+  GraduationCap,
+  Link2,
+  Copy,
+  Check,
+  Package,
+  ExternalLink,
+  PlusCircle,
+  Sparkles
+} from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,6 +29,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import {
+  extrairPacotesTurma,
+  serializarPacotesTurma,
+  PACOTES_PADRAO,
+  type PacoteItem
+} from "@/lib/turma-pacotes";
+
 import {
   Dialog,
   DialogContent,
@@ -83,11 +109,20 @@ function TurmaDetalhe() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [openAddAluno, setOpenAddAluno] = useState(false);
   const [openEditTurma, setOpenEditTurma] = useState(false);
   const [openDeleteTurma, setOpenDeleteTurma] = useState(false);
+  const [openLinkAdesao, setOpenLinkAdesao] = useState(false);
+  const [openGerenciarPacotes, setOpenGerenciarPacotes] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
   const [editingAluno, setEditingAluno] = useState<AlunoItem | null>(null);
   const [deletingAluno, setDeletingAluno] = useState<AlunoItem | null>(null);
+
+  // Estado local dos pacotes da turma
+  const [pacotes, setPacotes] = useState<PacoteItem[]>(PACOTES_PADRAO);
+  const [novoNome, setNovoNome] = useState("");
+  const [novoMaterial, setNovoMaterial] = useState("");
+  const [novoInvestimento, setNovoInvestimento] = useState("");
 
   const { data } = useQuery({
     queryKey: ["turma", turmaId],
@@ -107,6 +142,78 @@ function TurmaDetalhe() {
   const turma = data?.turma;
   const alunos = data?.alunos ?? [];
   const contratos = data?.contratos ?? [];
+
+  useEffect(() => {
+    if (turma?.observacoes) {
+      setPacotes(extrairPacotesTurma(turma.observacoes));
+    }
+  }, [turma?.observacoes]);
+
+  const pacotesAtivos = pacotes.filter((p) => p.ativo !== false);
+  const linkAdesao = typeof window !== "undefined" ? `${window.location.origin}/adesao/${turmaId}` : `/adesao/${turmaId}`;
+
+  const copiarLink = () => {
+    if (typeof navigator !== "undefined") {
+      void navigator.clipboard.writeText(linkAdesao);
+      setCopiedLink(true);
+      toast.success("Link de adesão copiado para a área de transferência!");
+      setTimeout(() => setCopiedLink(false), 2500);
+    }
+  };
+
+  // Salvar Pacotes Mutation
+  const salvarPacotes = useMutation({
+    mutationFn: async (novosPacotes: PacoteItem[]) => {
+      const serialized = serializarPacotesTurma(turma?.observacoes, novosPacotes);
+      const { error } = await supabase
+        .from("turmas")
+        .update({ observacoes: serialized })
+        .eq("id", turmaId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Pacotes da turma atualizados com sucesso!");
+      setOpenGerenciarPacotes(false);
+      void queryClient.invalidateQueries({ queryKey: ["turma", turmaId] });
+      void queryClient.invalidateQueries({ queryKey: ["turmas"] });
+    },
+    onError: (error) => toast.error(`Erro ao salvar pacotes: ${(error as Error).message}`),
+  });
+
+  const togglePacote = (id: string) => {
+    const atualizados = pacotes.map((p) => (p.id === id ? { ...p, ativo: !p.ativo } : p));
+    setPacotes(atualizados);
+  };
+
+  const adicionarNovoPacote = () => {
+    if (!novoNome.trim() || !novoInvestimento) {
+      toast.error("Informe o nome e o valor de investimento do pacote.");
+      return;
+    }
+    const val = parseFloat(novoInvestimento.replace(/\./g, "").replace(",", "."));
+    if (isNaN(val) || val <= 0) {
+      toast.error("Informe um valor válido.");
+      return;
+    }
+
+    const novo: PacoteItem = {
+      id: `custom-${Date.now()}`,
+      nome: novoNome.trim(),
+      material: novoMaterial.trim() || "Material conforme descrição.",
+      investimento: val,
+      ativo: true,
+    };
+
+    setPacotes([...pacotes, novo]);
+    setNovoNome("");
+    setNovoMaterial("");
+    setNovoInvestimento("");
+    toast.success("Novo pacote adicionado à lista. Clique em Salvar para confirmar.");
+  };
+
+  const removerPacote = (id: string) => {
+    setPacotes(pacotes.filter((p) => p.id !== id));
+  };
 
   // Update Turma Mutation
   const updateTurma = useMutation({
@@ -156,35 +263,6 @@ function TurmaDetalhe() {
       void navigate({ to: "/turmas" });
     },
     onError: (error) => toast.error(`Erro ao excluir turma: ${(error as Error).message}`),
-  });
-
-  // Add Aluno Mutation
-  const addAluno = useMutation({
-    mutationFn: async (form: FormData) => {
-      const parsed = alunoSchema.parse({
-        nome_completo: form.get("nome_completo"),
-        cpf: form.get("cpf") || undefined,
-        whatsapp: form.get("whatsapp") || undefined,
-        email: form.get("email") || undefined,
-        data_nascimento: form.get("data_nascimento") || undefined,
-      });
-      const { error } = await supabase.from("alunos").insert({
-        turma_id: turmaId,
-        nome_completo: parsed.nome_completo,
-        cpf: parsed.cpf ? parsed.cpf.replace(/\D/g, "") : null,
-        whatsapp: parsed.whatsapp ?? null,
-        email: parsed.email || null,
-        data_nascimento: parsed.data_nascimento || null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Formando adicionado com sucesso!");
-      setOpenAddAluno(false);
-      void queryClient.invalidateQueries({ queryKey: ["turma", turmaId] });
-    },
-    onError: (error) =>
-      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
   });
 
   // Update Aluno Mutation
@@ -262,13 +340,194 @@ function TurmaDetalhe() {
             <Badge variant={turma?.status === "ativa" ? "default" : "secondary"}>
               {turma?.status ?? "ativa"}
             </Badge>
+            <Badge variant="outline" className="gap-1.5 border-primary/40 text-primary font-medium">
+              <Package className="size-3.5" />
+              {pacotesAtivos.length} {pacotesAtivos.length === 1 ? "pacote ativo" : "pacotes ativos"}
+            </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             {turma?.curso} · {turma?.faculdade} · {turma?.semestre ?? "Sem semestre"} · {turma?.cidade ?? "Sem cidade"}
           </p>
         </div>
 
+        {/* BARRA DE AÇÕES SUPERIORES */}
         <div className="flex flex-wrap items-center gap-2">
+          
+          {/* BOTÃO LINK DE ADESÃO */}
+          <Dialog open={openLinkAdesao} onOpenChange={setOpenLinkAdesao}>
+            <Button
+              size="sm"
+              onClick={() => setOpenLinkAdesao(true)}
+              className="gap-1.5 bg-primary text-primary-foreground font-semibold shadow-sm"
+            >
+              <Link2 className="size-4" /> Link de Adesão
+            </Button>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-lg">
+                  <Sparkles className="size-5 text-primary" /> Link de Adesão dos Formandos
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <p className="text-sm text-muted-foreground">
+                  Compartilhe este link com os formandos da turma <strong>{turma?.nome}</strong>. Ao acessar, eles preencherão o formulário de 4 etapas e criarão automaticamente o login com CPF.
+                </p>
+
+                <div className="flex items-center gap-2 p-2 rounded-xl bg-muted border border-border">
+                  <Input
+                    readOnly
+                    value={linkAdesao}
+                    className="font-mono text-xs bg-background border-none shadow-none focus-visible:ring-0"
+                  />
+                  <Button size="sm" onClick={copiarLink} className="gap-1.5 shrink-0">
+                    {copiedLink ? <Check className="size-4" /> : <Copy className="size-4" />}
+                    {copiedLink ? "Copiado!" : "Copiar"}
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 flex-1"
+                    onClick={() => {
+                      const msg = encodeURIComponent(`Olá formandos da turma ${turma?.nome}! Acessem o link para realizar a adesão e escolher o pacote de formatura: ${linkAdesao}`);
+                      window.open(`https://api.whatsapp.com/send?text=${msg}`, "_blank");
+                    }}
+                  >
+                    <Phone className="size-4 text-green-600" /> Compartilhar no WhatsApp
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 flex-1"
+                    onClick={() => window.open(linkAdesao, "_blank")}
+                  >
+                    <ExternalLink className="size-4" /> Abrir Formulário
+                  </Button>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setOpenLinkAdesao(false)}>
+                  Fechar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* BOTÃO GERENCIAR PACOTES */}
+          <Dialog open={openGerenciarPacotes} onOpenChange={setOpenGerenciarPacotes}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setOpenGerenciarPacotes(true)}
+              className="gap-1.5 border-border"
+            >
+              <Package className="size-4 text-primary" /> Gerenciar Pacotes
+            </Button>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Package className="size-5 text-primary" /> Pacotes de Formatura da Turma
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-6 py-2">
+                <p className="text-sm text-muted-foreground">
+                  Ative ou desative os pacotes disponíveis para adesão desta turma, ou cadastre novos pacotes personalizados.
+                </p>
+
+                {/* Lista de pacotes configurados */}
+                <div className="space-y-3">
+                  <Label className="text-xs uppercase font-bold text-muted-foreground">Pacotes Cadastrados</Label>
+                  <div className="space-y-2.5">
+                    {pacotes.map((p) => (
+                      <div
+                        key={p.id}
+                        className={`p-3.5 rounded-xl border flex items-start justify-between gap-3 transition-all ${
+                          p.ativo !== false ? "bg-card border-border" : "bg-muted/40 border-border/50 opacity-60"
+                        }`}
+                      >
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-foreground">{p.nome}</span>
+                            <Badge variant={p.ativo !== false ? "default" : "secondary"} className="text-[10px]">
+                              {p.ativo !== false ? "Ativo na adesão" : "Desativado"}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{p.material}</p>
+                          <p className="text-sm font-extrabold text-primary pt-1">{brl(p.investimento)}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 pt-1">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor={`switch-${p.id}`} className="text-xs font-normal cursor-pointer hidden sm:inline">
+                              {p.ativo !== false ? "Ativo" : "Inativo"}
+                            </Label>
+                            <Switch
+                              id={`switch-${p.id}`}
+                              checked={p.ativo !== false}
+                              onCheckedChange={() => togglePacote(p.id)}
+                            />
+                          </div>
+                          {p.id.startsWith("custom-") && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-destructive hover:bg-destructive/10"
+                              onClick={() => removerPacote(p.id)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Adicionar novo pacote customizado */}
+                <div className="p-4 rounded-xl border border-dashed border-border bg-muted/20 space-y-3">
+                  <Label className="text-sm font-semibold flex items-center gap-2">
+                    <PlusCircle className="size-4 text-primary" /> Cadastrar Novo Pacote Personalizado
+                  </Label>
+                  <div className="space-y-2">
+                    <Input
+                      placeholder="Nome do pacote (ex: 5º PACOTE - ÁLBUM VIP + QUADRO)"
+                      value={novoNome}
+                      onChange={(e) => setNovoNome(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Material/Descrição (ex: Álbum 30x30, 80 fotos, quadro 50x70)"
+                      value={novoMaterial}
+                      onChange={(e) => setNovoMaterial(e.target.value)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder="Valor de investimento (ex: 2.800,00)"
+                        value={novoInvestimento}
+                        onChange={(e) => setNovoInvestimento(e.target.value)}
+                      />
+                      <Button type="button" variant="secondary" onClick={adicionarNovoPacote} className="shrink-0 gap-1.5">
+                        <Plus className="size-4" /> Adicionar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setOpenGerenciarPacotes(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => salvarPacotes.mutate(pacotes)}
+                  disabled={salvarPacotes.isPending}
+                  className="gap-2"
+                >
+                  {salvarPacotes.isPending ? "Salvando..." : "Salvar Configurações de Pacotes"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <Button variant="outline" size="sm" onClick={() => setOpenEditTurma(true)} className="gap-1.5">
             <Edit className="size-4" /> Editar Turma
           </Button>
@@ -281,60 +540,9 @@ function TurmaDetalhe() {
           >
             <Trash2 className="size-4" /> Excluir Turma
           </Button>
-
-          <Dialog open={openAddAluno} onOpenChange={setOpenAddAluno}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-1.5">
-                <Plus className="size-4" /> Adicionar formando
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Novo formando</DialogTitle>
-              </DialogHeader>
-              <form
-                id="form-aluno"
-                className="space-y-3"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  addAluno.mutate(new FormData(e.currentTarget));
-                }}
-              >
-                <div className="space-y-1.5">
-                  <Label htmlFor="nome_completo">Nome completo *</Label>
-                  <Input id="nome_completo" name="nome_completo" placeholder="Ex: João da Silva" required maxLength={120} />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="cpf">CPF (Login e Senha)</Label>
-                    <Input id="cpf" name="cpf" placeholder="000.000.000-00" maxLength={20} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="whatsapp">WhatsApp</Label>
-                    <Input id="whatsapp" name="whatsapp" placeholder="(11) 99999-9999" maxLength={20} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="email">E-mail</Label>
-                    <Input id="email" name="email" type="email" placeholder="aluno@email.com" maxLength={255} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="data_nascimento">Data de Nascimento</Label>
-                    <Input id="data_nascimento" name="data_nascimento" type="date" />
-                  </div>
-                </div>
-              </form>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setOpenAddAluno(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" form="form-aluno" disabled={addAluno.isPending}>
-                  {addAluno.isPending ? "Salvando..." : "Salvar formando"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </div>
       </div>
+
 
       {/* LISTA DE FORMANDOS */}
       <Card className="shadow-card">

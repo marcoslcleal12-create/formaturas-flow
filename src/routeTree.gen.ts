@@ -15,6 +15,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedFinanceiroRouteImport } from './routes/_authenticated/financeiro'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
+import { Route as AdesaoTurmaIdRouteImport } from './routes/adesao.$turmaId'
 import { Route as AuthenticatedAlunosAlunoIdRouteImport } from './routes/_authenticated/alunos.$alunoId'
 import { Route as AuthenticatedDemandasCasamentoRouteImport } from './routes/_authenticated/demandas.casamento'
 import { Route as AuthenticatedDemandasEnsaioRouteImport } from './routes/_authenticated/demandas.ensaio'
@@ -50,6 +51,11 @@ const AuthenticatedPainelRoute = AuthenticatedPainelRouteImport.update({
   id: '/painel',
   path: '/painel',
   getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AdesaoTurmaIdRoute = AdesaoTurmaIdRouteImport.update({
+  id: '/adesao/$turmaId',
+  path: '/adesao/$turmaId',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAlunosAlunoIdRoute =
   AuthenticatedAlunosAlunoIdRouteImport.update({
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/financeiro': typeof AuthenticatedFinanceiroRoute
   '/painel': typeof AuthenticatedPainelRoute
+  '/adesao/$turmaId': typeof AdesaoTurmaIdRoute
   '/alunos/$alunoId': typeof AuthenticatedAlunosAlunoIdRoute
   '/demandas/casamento': typeof AuthenticatedDemandasCasamentoRoute
   '/demandas/ensaio': typeof AuthenticatedDemandasEnsaioRoute
@@ -107,6 +114,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/financeiro': typeof AuthenticatedFinanceiroRoute
   '/painel': typeof AuthenticatedPainelRoute
+  '/adesao/$turmaId': typeof AdesaoTurmaIdRoute
   '/alunos/$alunoId': typeof AuthenticatedAlunosAlunoIdRoute
   '/demandas/casamento': typeof AuthenticatedDemandasCasamentoRoute
   '/demandas/ensaio': typeof AuthenticatedDemandasEnsaioRoute
@@ -122,6 +130,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/financeiro': typeof AuthenticatedFinanceiroRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
+  '/adesao/$turmaId': typeof AdesaoTurmaIdRoute
   '/_authenticated/alunos/$alunoId': typeof AuthenticatedAlunosAlunoIdRoute
   '/_authenticated/demandas/casamento': typeof AuthenticatedDemandasCasamentoRoute
   '/_authenticated/demandas/ensaio': typeof AuthenticatedDemandasEnsaioRoute
@@ -137,6 +146,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/financeiro'
     | '/painel'
+    | '/adesao/$turmaId'
     | '/alunos/$alunoId'
     | '/demandas/casamento'
     | '/demandas/ensaio'
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/financeiro'
     | '/painel'
+    | '/adesao/$turmaId'
     | '/alunos/$alunoId'
     | '/demandas/casamento'
     | '/demandas/ensaio'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/financeiro'
     | '/_authenticated/painel'
+    | '/adesao/$turmaId'
     | '/_authenticated/alunos/$alunoId'
     | '/_authenticated/demandas/casamento'
     | '/_authenticated/demandas/ensaio'
@@ -176,6 +188,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  AdesaoTurmaIdRoute: typeof AdesaoTurmaIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -221,6 +234,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/painel'
       preLoaderRoute: typeof AuthenticatedPainelRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/adesao/$turmaId': {
+      id: '/adesao/$turmaId'
+      path: '/adesao/$turmaId'
+      fullPath: '/adesao/$turmaId'
+      preLoaderRoute: typeof AdesaoTurmaIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/alunos/$alunoId': {
       id: '/_authenticated/alunos/$alunoId'
@@ -299,6 +319,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  AdesaoTurmaIdRoute: AdesaoTurmaIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
