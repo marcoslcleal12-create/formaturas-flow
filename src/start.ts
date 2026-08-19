@@ -3,7 +3,7 @@ import { createStart, createMiddleware } from "@tanstack/react-start";
 import { renderErrorPage } from "./lib/error-page";
 import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
 
-console.log("Cache buster v2");
+console.log("Cache buster v3");
 
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {

@@ -19,7 +19,9 @@ export default defineConfig({
         "@tanstack/react-router",
         "@tanstack/router-core",
         "@tanstack/router-utils",
-        "@tanstack/start-server-core"
+        "@tanstack/start-server-core",
+        "@tanstack/start-client-core",
+        "@tanstack/start-plugin-core"
       ]
     }
   }
