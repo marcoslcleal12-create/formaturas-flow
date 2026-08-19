@@ -52,6 +52,14 @@ export const Route = createFileRoute("/adesao/$turmaId")({
       { name: "description", content: "Formulário oficial de adesão e escolha de pacotes de formatura." },
     ],
   }),
+  loader: async ({ params }) => {
+    try {
+      const turma = await buscarTurmaPublica({ data: params.turmaId });
+      return { turma };
+    } catch {
+      return { turma: null };
+    }
+  },
   component: AdesaoTurmaPage,
 });
 
@@ -68,6 +76,7 @@ const formDadosPessoaisSchema = z.object({
 });
 
 function AdesaoTurmaPage() {
+  const loaderData = Route.useLoaderData();
   const { turmaId } = Route.useParams();
   const navigate = useNavigate();
   const realizarAdesao = useServerFn(realizarAdesaoPublica);
@@ -109,6 +118,7 @@ function AdesaoTurmaPage() {
       if (!data) throw new Error("Turma não encontrada");
       return data;
     },
+    initialData: loaderData?.turma || undefined,
   });
 
   const todosPacotes = extrairPacotesTurma(turma?.observacoes);

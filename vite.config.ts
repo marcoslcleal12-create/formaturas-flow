@@ -7,18 +7,22 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
-  define: {
-    'process.env.SUPABASE_URL': JSON.stringify("https://ozexujmqfniaecwwdmet.supabase.co"),
-    'process.env.SUPABASE_PUBLISHABLE_KEY': JSON.stringify("sb_publishable_T8e-A2_8Dfk52BH4FpGRbw_ajmsNgND"),
-    'process.env.SUPABASE_SERVICE_ROLE_KEY': JSON.stringify("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im96ZXh1am1xZm5pYWVjd3dkbWV0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzA5NDQ4NywiZXhwIjoyMTAyNjcwNDg3fQ.7HFYf188JHuI9vjHNZLTmkOD11OanrreXnfpucMP3nI"),
-    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify("https://ozexujmqfniaecwwdmet.supabase.co"),
-    'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify("sb_publishable_T8e-A2_8Dfk52BH4FpGRbw_ajmsNgND"),
+  vite: {
+    define: {
+      'process.env.SUPABASE_URL': JSON.stringify("https://ozexujmqfniaecwwdmet.supabase.co"),
+      'process.env.SUPABASE_PUBLISHABLE_KEY': JSON.stringify("sb_publishable_T8e-A2_8Dfk52BH4FpGRbw_ajmsNgND"),
+      'process.env.SUPABASE_SERVICE_ROLE_KEY': JSON.stringify("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im96ZXh1am1xZm5pYWVjd3dkbWV0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzA5NDQ4NywiZXhwIjoyMTAyNjcwNDg3fQ.7HFYf188JHuI9vjHNZLTmkOD11OanrreXnfpucMP3nI"),
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify("https://ozexujmqfniaecwwdmet.supabase.co"),
+      'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify("sb_publishable_T8e-A2_8Dfk52BH4FpGRbw_ajmsNgND"),
+    },
   },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
+  },
   nitro: {
+    preset: "vercel",
     externals: {
       inline: [
         "@tanstack/react-start",
@@ -30,6 +34,5 @@ export default defineConfig({
         "@tanstack/start-plugin-core"
       ]
     }
-  }
   },
 });
