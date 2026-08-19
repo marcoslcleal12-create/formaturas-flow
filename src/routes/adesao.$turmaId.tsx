@@ -1,5 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { 
@@ -79,6 +79,8 @@ function AdesaoTurmaPage() {
   const loaderData = Route.useLoaderData();
   const { turmaId } = Route.useParams();
   const navigate = useNavigate();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const realizarAdesao = useServerFn(realizarAdesaoPublica);
 
   // Etapa atual: 1 (Dados), 2 (Pacote e Parcelamento), 3 (Uso de Imagem), 4 (Contrato e Aceite)
@@ -206,6 +208,10 @@ Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às
       return res;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["meu-cadastro"] });
+      queryClient.invalidateQueries({ queryKey: ["meu-contrato"] });
+      router.invalidate();
+      
       toast.success("Adesão realizada com sucesso! Bem-vindo à sua área exclusiva.");
       void navigate({ to: "/painel" });
     },
