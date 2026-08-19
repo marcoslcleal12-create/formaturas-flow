@@ -302,4 +302,18 @@ export const realizarAdesaoPublica = createServerFn({ method: "POST" })
     };
   });
 
+export const buscarTurmaPublica = createServerFn({ method: "GET" })
+  .validator((id: string) => id)
+  .handler(async ({ data: turmaId }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("turmas")
+      .select("*")
+      .eq("id", turmaId)
+      .maybeSingle();
+      
+    if (error) throw error;
+    return data;
+  });
+
 

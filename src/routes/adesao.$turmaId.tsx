@@ -42,7 +42,7 @@ import {
 } from "@/lib/turma-pacotes";
 import { apenasDigitos, saveClienteSession } from "@/lib/aluno-login";
 import { CLAUSULAS_PADRAO, EMPRESA } from "@/lib/contrato-modelo";
-import { realizarAdesaoPublica } from "@/lib/alunos.functions";
+import { realizarAdesaoPublica, buscarTurmaPublica } from "@/lib/alunos.functions";
 
 
 export const Route = createFileRoute("/adesao/$turmaId")({
@@ -99,16 +99,14 @@ function AdesaoTurmaPage() {
   // Estado Etapa 4 - Aceite de Contrato
   const [aceitouContrato, setAceitouContrato] = useState(false);
 
+  const buscarTurma = useServerFn(buscarTurmaPublica);
+
   // Carrega dados da turma
   const { data: turma, isLoading, error } = useQuery({
     queryKey: ["turma-adesao", turmaId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("turmas")
-        .select("*")
-        .eq("id", turmaId)
-        .maybeSingle();
-      if (error) throw error;
+      const data = await buscarTurma({ data: turmaId });
+      if (!data) throw new Error("Turma não encontrada");
       return data;
     },
   });
