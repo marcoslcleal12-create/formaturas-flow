@@ -70,7 +70,7 @@ export function PagamentoDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm" className="h-8 gap-1.5 text-xs">
-          <Barcode className="size-3.5" /> Pagar Boleto
+          <Barcode className="size-3.5" /> Pagar
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">

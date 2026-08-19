@@ -83,6 +83,9 @@ function AlunoDetalhe() {
   const [openEditAluno, setOpenEditAluno] = useState(false);
   const [openDeleteAluno, setOpenDeleteAluno] = useState(false);
 
+  const [showDados, setShowDados] = useState(false);
+  const [showTurma, setShowTurma] = useState(false);
+
   const criarAcesso = useServerFn(criarAcessoFormando);
 
   const { data } = useQuery({
@@ -439,6 +442,68 @@ function AlunoDetalhe() {
         </Card>
       )}
 
+      {/* SEÇÃO DE DADOS E TURMA (VISUAL IGUAL À ÁREA DO FORMANDO) */}
+      {aluno && (
+        <div className="mb-6 grid gap-4 sm:grid-cols-2">
+          {/* Card Meus Dados */}
+          <Card className="shadow-card">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-base">Meus Dados Cadastrais</CardTitle>
+              <Button
+                variant={!showDados ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setShowDados(!showDados)}
+              >
+                {showDados ? "Ocultar" : "Visualizar"}
+              </Button>
+            </CardHeader>
+            {showDados && (
+              <CardContent className="space-y-1.5 text-sm">
+                <Info label="Nome Completo" value={aluno.nome_completo} />
+                <Info label="CPF" value={aluno.cpf} />
+                {aluno.rg && <Info label="RG" value={aluno.rg} />}
+                <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
+                <Info label="WhatsApp" value={aluno.whatsapp} />
+                <Info label="E-mail" value={aluno.email} />
+                <Info label="Endereço" value={aluno.endereco} />
+                <Info label="Cidade" value={aluno.cidade} />
+              </CardContent>
+            )}
+          </Card>
+
+          {/* Card Minha Turma e Opções */}
+          <Card className="shadow-card">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-base">Minha Turma & Opções</CardTitle>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{aluno.status ?? "Ativo"}</Badge>
+                <Button
+                  variant={!showTurma ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setShowTurma(!showTurma)}
+                >
+                  {showTurma ? "Ocultar" : "Visualizar"}
+                </Button>
+              </div>
+            </CardHeader>
+            {showTurma && (
+              <CardContent className="space-y-1.5 text-sm">
+                <Info label="Turma" value={aluno.turmas?.nome} />
+                <Info label="Curso" value={aluno.turmas?.curso} />
+                <Info label="Faculdade" value={aluno.turmas?.faculdade} />
+                {contrato && (
+                  <>
+                    <Info label="Pacote" value={contrato.pacote} />
+                    <Info label="Valor Total" value={brl(Number(contrato.valor_total))} />
+                    <Info label="Condição" value={`${contrato.num_parcelas}x no boleto`} />
+                  </>
+                )}
+              </CardContent>
+            )}
+          </Card>
+        </div>
+      )}
+
       {/* SEÇÃO DO CONTRATO E FINANCEIRO */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -550,13 +615,17 @@ function AlunoDetalhe() {
                 return (
                   <div
                     key={p.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border px-4 py-3 hover:bg-muted/40 transition-colors"
+                    className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                      atrasada
+                        ? "border-destructive/60 bg-destructive/10 text-destructive font-medium"
+                        : "border-border hover:bg-muted/40"
+                    }`}
                   >
                     <div>
-                      <p className="font-medium">
+                      <p className={`font-medium ${atrasada ? "text-destructive font-bold" : ""}`}>
                         {p.numero === 0 ? "Entrada" : `Parcela ${p.numero}`} · {brl(Number(p.valor))}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className={`text-xs ${atrasada ? "text-destructive/80 font-medium" : "text-muted-foreground"}`}>
                         Vencimento: {new Date(`${p.vencimento}T12:00:00`).toLocaleDateString("pt-BR")}
                         {p.data_pagamento && ` · Pago em: ${new Date(`${p.data_pagamento}T12:00:00`).toLocaleDateString("pt-BR")}`}
                       </p>
@@ -564,19 +633,10 @@ function AlunoDetalhe() {
                     <div className="flex items-center gap-3">
                       <Badge
                         variant={pago ? "default" : atrasada ? "destructive" : "secondary"}
-                        className={pago ? "bg-emerald-600 hover:bg-emerald-700" : ""}
+                        className={pago ? "bg-emerald-600 hover:bg-emerald-700" : atrasada ? "bg-destructive text-destructive-foreground font-bold" : ""}
                       >
                         {pago ? "pago" : atrasada ? "atrasada" : "pendente"}
                       </Badge>
-                      <Button
-                        size="sm"
-                        variant={pago ? "outline" : "default"}
-                        className="h-8 text-xs"
-                        onClick={() => toggleParcela.mutate({ id: p.id, valor: Number(p.valor), pago })}
-                        disabled={toggleParcela.isPending}
-                      >
-                        {pago ? "Desfazer Pago" : "Baixar Pagamento"}
-                      </Button>
                     </div>
                   </div>
                 );
@@ -778,6 +838,16 @@ function Resumo({ titulo, valor, destaque }: { titulo: string; valor: string; de
         <p className={`mt-1 text-lg font-semibold ${destaque ? "text-destructive" : ""}`}>{valor}</p>
       </CardContent>
     </Card>
+  );
+}
+
+function Info({ label, value }: { label: string; value?: string | null }) {
+  if (!value) return null;
+  return (
+    <div className="flex justify-between py-1 border-b border-border/40 last:border-0">
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="font-medium text-foreground">{value}</span>
+    </div>
   );
 }
 

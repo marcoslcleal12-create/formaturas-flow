@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Camera, ExternalLink, FileDown, Lock, Printer, Calendar, MapPin, Heart, PartyPopper, UserCheck } from "lucide-react";
@@ -17,8 +18,15 @@ import {
 } from "@/lib/contrato-modelo";
 import { loadDemandas, formatarCpf, type DemandaItem } from "@/lib/demandas-store";
 import { apenasDigitos } from "@/lib/aluno-login";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
-const SELPICS_URL = "https://selpics.com/";
+const SELPICS_URL = "https://jm-studio-fotografico.youfocus.com.br/";
 
 export const Route = createFileRoute("/_authenticated/painel")({
   head: () => ({
@@ -35,6 +43,10 @@ export const Route = createFileRoute("/_authenticated/painel")({
 function PainelAluno() {
   const { user, isStaff, loading } = useAuth();
   const userDigits = apenasDigitos(user?.email?.split("@")[0] ?? user?.id ?? "");
+
+  const [showDados, setShowDados] = useState(false);
+  const [showTurma, setShowTurma] = useState(false);
+  const [showOverdueAlert, setShowOverdueAlert] = useState(false);
 
   // 1. Check if user is a Formando in Supabase (by user_id or by CPF)
   const { data: aluno } = useQuery({
@@ -104,6 +116,21 @@ function PainelAluno() {
   const primeiroNome =
     (aluno?.nome_completo ?? demandaCliente?.cliente ?? user?.email ?? "").split(" ")[0];
 
+  const temBoletosAtrasados = !!(
+    (aluno && contrato && parcelas.some((p) => p.status !== "pago" && p.vencimento < hoje)) ||
+    (demandaCliente && demandaParcelas.some((p) => p.status !== "pago" && p.vencimento < hoje))
+  );
+
+  useEffect(() => {
+    if (temBoletosAtrasados) {
+      setShowOverdueAlert(true);
+      const interval = setInterval(() => {
+        setShowOverdueAlert(true);
+      }, 120000); // 2 minutos
+      return () => clearInterval(interval);
+    }
+  }, [temBoletosAtrasados]);
+
   const handleBaixarPdf = () => {
     if (aluno && contrato) {
       gerarContratoPdf({
@@ -114,6 +141,7 @@ function PainelAluno() {
           cidade: aluno.cidade ?? null,
           telefone: aluno.whatsapp ?? null,
           email: aluno.email ?? null,
+          turma_nome: aluno.turmas?.nome ?? null,
         },
         contrato: {
           pacote: contrato.pacote,
@@ -211,7 +239,7 @@ function PainelAluno() {
               </Button>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Acesse a plataforma Selpics para escolher as fotos do seu evento com o mesmo CPF do seu acesso.
+              Acesse a plataforma YouFocus para escolher as fotos do seu evento com o mesmo CPF do seu acesso.
             </CardContent>
           </Card>
 
@@ -307,16 +335,34 @@ function PainelAluno() {
                   Documento contratual referente a {demandaCliente.pacote}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" onClick={handleBaixarPdf}>
-                  <FileDown className="size-4 mr-1.5" /> Baixar Contrato em PDF
-                </Button>
-              </div>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="rounded-xl border border-border bg-card/60 p-4 font-mono text-xs leading-relaxed max-h-[250px] overflow-y-auto whitespace-pre-wrap select-text text-foreground/90 shadow-inner">
-                {CLAUSULAS_PADRAO}
-              </div>
+            <CardContent className="flex flex-wrap gap-3 pt-2">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    Visualizar Contrato
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+                  <DialogHeader>
+                    <DialogTitle>Contrato de Prestação de Serviços</DialogTitle>
+                  </DialogHeader>
+                  <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-sm mt-2">
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Termos e Cláusulas Contratuais
+                      </p>
+                      <div className="rounded-xl border border-border bg-card p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text text-foreground/90 shadow-inner">
+                        {CLAUSULAS_PADRAO}
+                      </div>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Button size="sm" onClick={handleBaixarPdf}>
+                <FileDown className="size-4 mr-1.5" /> Baixar em PDF
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -337,51 +383,71 @@ function PainelAluno() {
               </Button>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Escolha as fotos da sua formatura na plataforma Selpics usando o mesmo CPF do seu acesso.
+              Escolha as fotos da sua formatura na plataforma YouFocus usando o mesmo CPF do seu acesso.
             </CardContent>
           </Card>
 
           {/* Card Meus Dados */}
           <Card className="shadow-card">
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-base">Meus Dados Cadastrais</CardTitle>
+              <Button 
+                variant={!showDados ? "default" : "ghost"} 
+                size="sm" 
+                onClick={() => setShowDados(!showDados)}
+              >
+                {showDados ? "Ocultar" : "Visualizar"}
+              </Button>
             </CardHeader>
-            <CardContent className="space-y-1.5 text-sm">
-              <Info label="Nome Completo" value={aluno.nome_completo} />
-              <Info label="CPF (Login)" value={aluno.cpf} />
-              {aluno.rg && <Info label="RG" value={aluno.rg} />}
-              <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
-              <Info label="WhatsApp" value={aluno.whatsapp} />
-              <Info label="E-mail" value={aluno.email} />
-              <Info label="Endereço" value={aluno.endereco} />
-              <Info label="Cidade" value={aluno.cidade} />
-            </CardContent>
+            {showDados && (
+              <CardContent className="space-y-1.5 text-sm">
+                <Info label="Nome Completo" value={aluno.nome_completo} />
+                <Info label="CPF (Login)" value={aluno.cpf} />
+                {aluno.rg && <Info label="RG" value={aluno.rg} />}
+                <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
+                <Info label="WhatsApp" value={aluno.whatsapp} />
+                <Info label="E-mail" value={aluno.email} />
+                <Info label="Endereço" value={aluno.endereco} />
+                <Info label="Cidade" value={aluno.cidade} />
+              </CardContent>
+            )}
           </Card>
 
           {/* Card Minha Turma e Opções */}
           <Card className="shadow-card">
-            <CardHeader className="flex-row items-center justify-between">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-base">Minha Turma & Opções</CardTitle>
-              <Badge variant="secondary">{aluno.status}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{aluno.status}</Badge>
+                <Button 
+                  variant={!showTurma ? "default" : "ghost"} 
+                  size="sm" 
+                  onClick={() => setShowTurma(!showTurma)}
+                >
+                  {showTurma ? "Ocultar" : "Visualizar"}
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-1.5 text-sm">
-              <Info label="Turma" value={aluno.turmas?.nome} />
-              <Info label="Curso" value={aluno.turmas?.curso} />
-              <Info label="Faculdade" value={aluno.turmas?.faculdade} />
-              <Info label="Semestre" value={aluno.turmas?.semestre} />
-              {contrato && (
-                <>
-                  <Info
-                    label="Uso de Imagem"
-                    value={contrato.autoriza_imagem !== false ? "Sim, autorizado para divulgação" : "Não autorizado"}
-                  />
-                  <Info
-                    label="Vencimento dos Boletos"
-                    value={`Todo dia ${contrato.dia_vencimento || 10}`}
-                  />
-                </>
-              )}
-            </CardContent>
+            {showTurma && (
+              <CardContent className="space-y-1.5 text-sm">
+                <Info label="Turma" value={aluno.turmas?.nome} />
+                <Info label="Curso" value={aluno.turmas?.curso} />
+                <Info label="Faculdade" value={aluno.turmas?.faculdade} />
+                <Info label="Semestre" value={aluno.turmas?.semestre} />
+                {contrato && (
+                  <>
+                    <Info
+                      label="Uso de Imagem"
+                      value={contrato.autoriza_imagem !== false ? "Sim, autorizado para divulgação" : "Não autorizado"}
+                    />
+                    <Info
+                      label="Vencimento dos Boletos"
+                      value={`Todo dia ${contrato.dia_vencimento || 10}`}
+                    />
+                  </>
+                )}
+              </CardContent>
+            )}
           </Card>
 
           <Card className="shadow-card sm:col-span-2">
@@ -463,45 +529,51 @@ function PainelAluno() {
                 <Badge variant="outline" className="gap-1 border-border/80 text-muted-foreground text-xs py-1">
                   <Lock className="size-3" /> Bloqueado para edição
                 </Badge>
-                <Button
-                  size="sm"
-                  onClick={handleBaixarPdf}
-                  disabled={!contrato}
-                >
-                  <FileDown className="size-4 mr-1.5" /> Baixar em PDF
-                </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="flex flex-wrap gap-3 pt-2">
               {contrato ? (
                 <>
-                  <div className="grid gap-3 sm:grid-cols-1">
-                    <div className="rounded-xl border border-border bg-muted/40 p-3">
-                      <p className="text-xs font-medium text-muted-foreground">PACOTE CONTRATADO</p>
-                      <p className="text-sm font-semibold mt-1">{contrato.pacote}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Total: {brl(Number(contrato.valor_total))}
-                        {Number(contrato.desconto) > 0 && ` (Desconto: ${brl(Number(contrato.desconto))})`}
-                      </p>
-                    </div>
-                  </div>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        Visualizar Contrato
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+                      <DialogHeader>
+                        <DialogTitle>Contrato de Prestação de Serviços</DialogTitle>
+                      </DialogHeader>
+                      <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-sm mt-2">
+                        <div className="rounded-xl border border-border bg-muted/40 p-3">
+                          <p className="text-xs font-medium text-muted-foreground">PACOTE CONTRATADO</p>
+                          <p className="text-sm font-semibold mt-0.5">{contrato.pacote}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Total: {brl(Number(contrato.valor_total))}
+                            {Number(contrato.desconto) > 0 && ` (Desconto: ${brl(Number(contrato.desconto))})`}
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            Termos e Cláusulas Contratuais
+                          </p>
+                          <div className="rounded-xl border border-border bg-card p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text text-foreground/90 shadow-inner">
+                            {contrato.texto_contrato || CLAUSULAS_PADRAO}
+                          </div>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
 
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Termos e Cláusulas Contratuais
-                      </p>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Lock className="size-3" /> Modelo definido pelo administrador
-                      </span>
-                    </div>
-                    <div className="rounded-xl border border-border bg-card/60 p-4 font-mono text-xs leading-relaxed max-h-[300px] overflow-y-auto whitespace-pre-wrap select-text text-foreground/90 shadow-inner">
-                      {contrato.texto_contrato || CLAUSULAS_PADRAO}
-                    </div>
-                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleBaixarPdf}
+                  >
+                    <FileDown className="size-4 mr-1.5" /> Baixar em PDF
+                  </Button>
                 </>
               ) : (
-                <div className="p-4 rounded-xl border border-border bg-muted/40 text-sm text-muted-foreground text-center">
+                <div className="w-full p-4 rounded-xl border border-border bg-muted/40 text-sm text-muted-foreground text-center">
                   O modelo e os dados do seu contrato ainda estão sendo preparados pela equipe administrativa da JM Formaturas.
                 </div>
               )}
@@ -517,6 +589,29 @@ function PainelAluno() {
             Formaturas para liberar o acesso.
           </CardContent>
         </Card>
+      )}
+
+      {showOverdueAlert && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-xl border border-destructive/30 bg-destructive/95 text-destructive-foreground p-4 shadow-2xl backdrop-blur-sm animate-in fade-in slide-in-from-bottom-5 duration-300">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <p className="font-semibold text-sm flex items-center gap-1.5">
+                <span>⚠️</span> Atenção: Parcelas Atrasadas
+              </p>
+              <p className="text-xs opacity-90 leading-normal">
+                Identificamos que você possui parcelas com o boleto vencido. Regularize seu pagamento para evitar suspensão dos serviços.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowOverdueAlert(false)}
+              className="text-destructive-foreground/70 hover:text-destructive-foreground hover:bg-white/10 rounded p-1 transition-colors"
+            >
+              <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
       )}
     </AppShell>
   );

@@ -708,45 +708,56 @@ Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às
             <CardContent className="space-y-6">
               
               {/* Documento do Contrato (Somente Leitura) */}
-              <div className="p-4 sm:p-6 rounded-xl border border-border bg-card max-h-96 overflow-y-auto font-mono text-xs leading-relaxed space-y-4 shadow-inner">
-                <div className="text-center pb-3 border-b border-border">
-                  <h3 className="font-bold text-sm uppercase">{EMPRESA.nome}</h3>
-                  <p className="text-muted-foreground">{EMPRESA.cnpj} • {EMPRESA.cidade}</p>
-                  <p className="font-semibold text-foreground mt-2">CONTRATO DE ADESÃO INDIVIDUAL DE FORMATURA</p>
+              <div className="p-5 sm:p-8 rounded-xl border-2 border-primary/20 bg-card max-h-[60vh] overflow-y-auto text-sm leading-relaxed space-y-5 shadow-inner">
+                <div className="text-center pb-4 border-b-2 border-border">
+                  <h3 className="font-extrabold text-lg uppercase text-primary">{EMPRESA.nome}</h3>
+                  <p className="text-muted-foreground text-xs font-medium">{EMPRESA.cnpj} • {EMPRESA.cidade}</p>
+                  <p className="font-bold text-foreground mt-3 text-base">CONTRATO DE ADESÃO INDIVIDUAL DE FORMATURA</p>
                 </div>
 
-                <div>
-                  <p className="font-bold mb-1">1. IDENTIFICAÇÃO DAS PARTES</p>
-                  <p><strong>CONTRATADA:</strong> {EMPRESA.nome}, CNPJ: {EMPRESA.cnpj}, Contato: {EMPRESA.contato}.</p>
-                  <p><strong>CONTRATANTE:</strong> {dadosPessoais.nome_completo}, CPF: {dadosPessoais.cpf}, RG: {dadosPessoais.rg || "Não informado"}, Endereço: {dadosPessoais.endereco}, Cidade: {dadosPessoais.cidade}, WhatsApp: {dadosPessoais.whatsapp}, E-mail: {dadosPessoais.email}.</p>
-                  <p><strong>TURMA:</strong> {turma.nome} ({turma.curso} – {turma.faculdade}).</p>
+                <div className="space-y-2">
+                  <h4 className="font-bold text-primary border-b border-primary/10 pb-1 uppercase text-sm tracking-wider">1. Identificação das Partes</h4>
+                  <div className="bg-muted/30 p-3 rounded-lg space-y-2">
+                    <p><strong className="text-foreground">CONTRATADA:</strong> {EMPRESA.nome}, CNPJ: {EMPRESA.cnpj}, Contato: {EMPRESA.contato}.</p>
+                    <p><strong className="text-foreground">CONTRATANTE:</strong> {dadosPessoais.nome_completo}, CPF: {dadosPessoais.cpf}, RG: {dadosPessoais.rg || "Não informado"}, Endereço: {dadosPessoais.endereco}, Cidade: {dadosPessoais.cidade}, WhatsApp: {dadosPessoais.whatsapp}, E-mail: {dadosPessoais.email}.</p>
+                    <p><strong className="text-foreground">TURMA:</strong> {turma.nome} ({turma.curso} – {turma.faculdade}).</p>
+                  </div>
                 </div>
 
-                <div>
-                  <p className="font-bold mb-1">2. PACOTE CONTRATADO E VALORES</p>
-                  <p><strong>PACOTE:</strong> {pacoteSelecionado?.nome}</p>
-                  <p><strong>DESCRIÇÃO DO MATERIAL:</strong> {pacoteSelecionado?.material}</p>
-                  <p><strong>VALOR TOTAL:</strong> {brl(pacoteSelecionado?.investimento || 0)}</p>
-                  <p><strong>CONDIÇÃO:</strong> Boleto bancário em {numParcelas}x de {brl((pacoteSelecionado?.investimento || 0) / numParcelas)} com vencimento todo dia {diaVencimento}.</p>
+                <div className="space-y-2">
+                  <h4 className="font-bold text-primary border-b border-primary/10 pb-1 uppercase text-sm tracking-wider">2. Pacote Contratado e Valores</h4>
+                  <div className="bg-muted/30 p-3 rounded-lg space-y-2">
+                    <p><strong className="text-foreground">PACOTE:</strong> {pacoteSelecionado?.nome}</p>
+                    <p><strong className="text-foreground">DESCRIÇÃO DO MATERIAL:</strong> {pacoteSelecionado?.material}</p>
+                    <p><strong className="text-foreground">VALOR TOTAL:</strong> <span className="text-primary font-bold">{brl(pacoteSelecionado?.investimento || 0)}</span></p>
+                    <p><strong className="text-foreground">CONDIÇÃO:</strong> Boleto bancário em <span className="font-bold">{numParcelas}x de {brl((pacoteSelecionado?.investimento || 0) / numParcelas)}</span> com vencimento todo dia {diaVencimento}.</p>
+                  </div>
                 </div>
 
-                <div>
-                  <p className="font-bold mb-1">3. CRONOGRAMA DE VENCIMENTO DAS PARCELAS</p>
-                  <div className="space-y-1">
+                <div className="space-y-2">
+                  <h4 className="font-bold text-primary border-b border-primary/10 pb-1 uppercase text-sm tracking-wider">3. Cronograma de Vencimento</h4>
+                  <div className="bg-muted/30 p-3 rounded-lg space-y-1">
                     {parcelasCalculadas.map((p) => (
-                      <p key={p.numero}>• {p.numero}º Boleto: {p.mesAno} (Venc. {p.vencimento.split("-").reverse().join("/")}) — {brl(p.valor)}</p>
+                      <div key={p.numero} className="flex justify-between border-b border-border/50 pb-1 last:border-0 last:pb-0">
+                        <span>{p.numero}º Boleto: {p.mesAno} (Venc. {p.vencimento.split("-").reverse().join("/")})</span>
+                        <span className="font-bold">{brl(p.valor)}</span>
+                      </div>
                     ))}
                   </div>
                 </div>
 
-                <div>
-                  <p className="font-bold mb-1">4. AUTORIZAÇÃO DE USO DE IMAGEM</p>
-                  <p>O CONTRATANTE declara que <strong>{autorizaImagem === "sim" ? "AUTORIZA" : "NÃO AUTORIZA"}</strong> o uso de sua imagem para divulgação institucional.</p>
+                <div className="space-y-2">
+                  <h4 className="font-bold text-primary border-b border-primary/10 pb-1 uppercase text-sm tracking-wider">4. Autorização de Uso de Imagem</h4>
+                  <div className="bg-muted/30 p-3 rounded-lg">
+                    <p>O CONTRATANTE declara que <strong className="text-foreground uppercase">{autorizaImagem === "sim" ? "AUTORIZA" : "NÃO AUTORIZA"}</strong> o uso de sua imagem para divulgação institucional.</p>
+                  </div>
                 </div>
 
-                <div>
-                  <p className="font-bold mb-1">5. CLÁUSULAS GERAIS</p>
-                  <p className="whitespace-pre-line text-muted-foreground">{CLAUSULAS_PADRAO}</p>
+                <div className="space-y-2 pt-2">
+                  <h4 className="font-bold text-primary border-b border-primary/10 pb-1 uppercase text-sm tracking-wider">5. Cláusulas Gerais</h4>
+                  <div className="bg-muted/10 p-4 rounded-lg border border-border">
+                    <p className="whitespace-pre-line text-foreground/80 text-sm">{CLAUSULAS_PADRAO}</p>
+                  </div>
                 </div>
               </div>
 

@@ -11,7 +11,8 @@ export const EMPRESA = {
 export const FORMAS_PAGAMENTO = [
   { id: "boleto", label: "Boleto bancário" },
   { id: "pix", label: "Pix" },
-  { id: "cartao", label: "Cartão de crédito/débito" },
+  { id: "cartao_credito", label: "Cartão de Crédito" },
+  { id: "cartao_debito", label: "Cartão de Débito" },
   { id: "dinheiro", label: "Dinheiro" },
 ] as const;
 
@@ -87,6 +88,7 @@ export type ContratoPdfInput = {
     cidade: string | null;
     telefone: string | null;
     email: string | null;
+    turma_nome?: string | null;
   };
   contrato: {
     pacote: string;
@@ -140,6 +142,9 @@ export function gerarContratoPdf(input: ContratoPdfInput) {
   doc.line(marginX, y - 2, 210 - marginX, y - 2);
   y += 3;
 
+  if (aluno.turma_nome) {
+    linha(`TURMA: ${aluno.turma_nome.toUpperCase()}`, { size: 11, bold: true });
+  }
   linha("DADOS DO CONTRATANTE", { size: 10, bold: true });
   linha(`Nome: ${aluno.nome_completo}`);
   linha(`CPF: ${aluno.cpf ?? "—"}          Contato: ${aluno.telefone ?? "—"}`);
