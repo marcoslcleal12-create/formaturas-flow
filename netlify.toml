@@ -3,6 +3,6 @@
   publish = "dist"
 
 [build.environment]
-  NITRO_PRESET = "netlify"
+  NITRO_PRESET = "netlify-edge"
   NODE_VERSION = "20"
   AWS_LAMBDA_JS_RUNTIME = "nodejs20.x"
