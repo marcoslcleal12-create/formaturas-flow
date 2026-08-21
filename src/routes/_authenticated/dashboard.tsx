@@ -62,7 +62,7 @@ export function DashboardPage() {
   });
 
   const turmas = data?.turmas ?? [];
-  const alunos = data?.alunos ?? [];
+  const alunos = (data?.alunos ?? []).filter((a) => a.status !== "inativo");
   const contratos = data?.contratos ?? [];
   const todasParcelasTurmas = contratos.flatMap((c) => c.parcelas ?? []);
 

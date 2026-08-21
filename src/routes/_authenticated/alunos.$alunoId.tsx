@@ -1,19 +1,39 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { ArrowLeft, KeyRound, Plus, Edit, Trash2, CreditCard, User, AlertCircle, FileText, CheckCircle2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { 
+  ArrowLeft, 
+  KeyRound, 
+  Plus, 
+  Edit, 
+  Trash2, 
+  CreditCard, 
+  User, 
+  AlertCircle, 
+  FileText, 
+  CheckCircle2,
+  GraduationCap,
+  Package,
+  FileDown,
+  Eye,
+  Save,
+  Camera,
+  ExternalLink,
+  UserX
+} from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { criarAcessoFormando } from "@/lib/alunos.functions";
 import { AppShell, brl } from "@/components/app/AppShell";
-import { ContratoDocumento } from "@/components/app/ContratoDocumento";
-import { FORMAS_PAGAMENTO } from "@/lib/contrato-modelo";
+import { CLAUSULAS_PADRAO, FORMAS_PAGAMENTO, gerarContratoPdf } from "@/lib/contrato-modelo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -48,14 +68,16 @@ export const Route = createFileRoute("/_authenticated/alunos/$alunoId")({
 
 const contratoSchema = z.object({
   pacote: z.string().trim().min(2, "Informe o pacote").max(120),
-  valor_total: z.number().positive("Valor total inválido"),
-  desconto: z.number().min(0),
-  valor_entrada: z.number().min(0),
-  num_parcelas: z.number().int().min(1).max(60),
-  dia_vencimento: z.number().int().min(1).max(28),
-  primeiro_vencimento: z.string().min(10, "Informe o primeiro vencimento"),
-  forma_pagamento: z.string().min(2),
+  valor_total: z.number().positive("Valor total deve ser maior que zero"),
+  desconto: z.number().min(0).default(0),
+  valor_entrada: z.number().min(0).default(0),
+  num_parcelas: z.number().int().min(1, "Mínimo 1 parcela").max(60),
+  dia_vencimento: z.number().int().min(1).max(31),
+  primeiro_vencimento: z.string().min(10, "Data inválida"),
+  forma_pagamento: z.string().default("boleto"),
 });
+
+const SELPICS_URL = "https://sso.youfocus.com.br/login?app_id=NDVlNGNjMjEtMTE4NC0xMWYxLThiZGYtM2EzZTUwN2Q2MDlh";
 
 const alunoEditSchema = z.object({
   nome_completo: z.string().trim().min(3, "Informe o nome completo").max(120),
@@ -67,8 +89,11 @@ const alunoEditSchema = z.object({
   endereco: z.string().trim().max(200).optional(),
 });
 
-function num(form: FormData, key: string) {
-  return Number(String(form.get(key) ?? "0").replace(",", ".")) || 0;
+function num(form: FormData, key: string): number {
+  const v = form.get(key);
+  if (!v) return 0;
+  const n = parseFloat(String(v).replace(",", "."));
+  return isNaN(n) ? 0 : n;
 }
 
 function AlunoDetalhe() {
@@ -82,9 +107,17 @@ function AlunoDetalhe() {
 
   const [openEditAluno, setOpenEditAluno] = useState(false);
   const [openDeleteAluno, setOpenDeleteAluno] = useState(false);
+  const [openInativarAluno, setOpenInativarAluno] = useState(false);
+  const [motivoInativacao, setMotivoInativacao] = useState("");
 
   const [showDados, setShowDados] = useState(false);
   const [showTurma, setShowTurma] = useState(false);
+  const [showPacote, setShowPacote] = useState(false);
+  const [showContrato, setShowContrato] = useState(false);
+  const [showSel1, setShowSel1] = useState(false);
+  const [showSel2, setShowSel2] = useState(false);
+  const [showSel3, setShowSel3] = useState(false);
+  const [textoContrato, setTextoContrato] = useState<string>(CLAUSULAS_PADRAO);
 
   const criarAcesso = useServerFn(criarAcessoFormando);
 
@@ -93,7 +126,7 @@ function AlunoDetalhe() {
     queryFn: async () => {
       const aluno = await supabase
         .from("alunos")
-        .select("*, turmas(id, nome, curso, faculdade)")
+        .select("*, turmas(id, nome, curso, faculdade, semestre)")
         .eq("id", alunoId)
         .maybeSingle();
       if (aluno.error) throw aluno.error;
@@ -110,6 +143,12 @@ function AlunoDetalhe() {
   const aluno = data?.aluno;
   const contrato = data?.contrato;
   const parcelas = [...(contrato?.parcelas ?? [])].sort((a, b) => a.numero - b.numero);
+
+  useEffect(() => {
+    if (contrato?.texto_contrato) {
+      setTextoContrato(contrato.texto_contrato);
+    }
+  }, [contrato?.texto_contrato]);
 
   // Update Aluno Details Mutation
   const updateAluno = useMutation({
@@ -148,6 +187,37 @@ function AlunoDetalhe() {
       toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
   });
 
+  // Update Links Aluno Mutation
+  const updateLinksAluno = useMutation({
+    mutationFn: async (data: {
+      link_fotos_selecionadas?: string | null;
+      prazo_fotos_selecionadas?: number | null;
+      fotos_liberadas?: boolean;
+      link_aprovacao_album?: string | null;
+      album_liberado?: boolean;
+    }) => {
+      const updatePayload: any = { ...data };
+      if (data.prazo_fotos_selecionadas) {
+        const date = new Date();
+        date.setDate(date.getDate() + data.prazo_fotos_selecionadas);
+        updatePayload.vencimento_fotos_selecionadas = date.toISOString().split("T")[0];
+      } else if (data.prazo_fotos_selecionadas === null) {
+        updatePayload.vencimento_fotos_selecionadas = null;
+      }
+
+      const { error } = await supabase
+        .from("alunos")
+        .update(updatePayload)
+        .eq("id", alunoId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Dados de seleção atualizados com sucesso!");
+      void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
+    },
+    onError: (error) => toast.error(`Erro ao salvar: ${(error as Error).message}`),
+  });
+
   // Delete Aluno Mutation
   const deleteAluno = useMutation({
     mutationFn: async () => {
@@ -166,6 +236,48 @@ function AlunoDetalhe() {
       }
     },
     onError: (error) => toast.error(`Erro ao excluir formando: ${(error as Error).message}`),
+  });
+
+  // Inativar Aluno Mutation
+  const inativarAluno = useMutation({
+    mutationFn: async (motivo: string) => {
+      const { error } = await supabase
+        .from("alunos")
+        .update({
+          status: "inativo",
+          motivo_inativacao: motivo.trim() || null,
+        })
+        .eq("id", alunoId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Cadastro do formando inativado com sucesso!");
+      setOpenInativarAluno(false);
+      setMotivoInativacao("");
+      void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
+      void queryClient.invalidateQueries({ queryKey: ["turma"] });
+    },
+    onError: (error) => toast.error(`Erro ao inativar cliente: ${(error as Error).message}`),
+  });
+
+  // Reativar Aluno Mutation
+  const reativarAluno = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("alunos")
+        .update({
+          status: "ativo",
+          motivo_inativacao: null,
+        })
+        .eq("id", alunoId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Cadastro do formando reativado com sucesso!");
+      void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
+      void queryClient.invalidateQueries({ queryKey: ["turma"] });
+    },
+    onError: (error) => toast.error(`Erro ao reativar cliente: ${(error as Error).message}`),
   });
 
   // Generate Access Mutation
@@ -379,6 +491,59 @@ function AlunoDetalhe() {
     onError: (error) => toast.error((error as Error).message),
   });
 
+  // Salvar Cláusulas do Contrato
+  const salvarContratoTexto = useMutation({
+    mutationFn: async () => {
+      if (!contrato) return;
+      const { error } = await supabase
+        .from("contratos")
+        .update({ texto_contrato: textoContrato })
+        .eq("id", contrato.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Cláusulas do contrato salvas com sucesso!");
+      void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
+      void queryClient.invalidateQueries({ queryKey: ["turma"] });
+    },
+    onError: (error) => toast.error(`Erro ao salvar contrato: ${(error as Error).message}`),
+  });
+
+  const handleBaixarContratoPdf = () => {
+    if (!aluno || !contrato) return;
+    gerarContratoPdf({
+      aluno: {
+        nome_completo: aluno.nome_completo,
+        cpf: aluno.cpf,
+        endereco: aluno.endereco,
+        cidade: aluno.cidade,
+        telefone: aluno.whatsapp || aluno.telefone,
+        email: aluno.email,
+        turma_nome: aluno.turmas?.nome || null,
+      },
+      contrato: {
+        pacote: contrato.pacote,
+        valor_total: Number(contrato.valor_total),
+        desconto: Number(contrato.desconto || 0),
+        valor_entrada: Number(contrato.valor_entrada || 0),
+        dia_vencimento: contrato.dia_vencimento || 10,
+        data_contrato: contrato.data_contrato || hoje,
+        forma_pagamento: contrato.forma_pagamento || "boleto",
+        autoriza_imagem: contrato.autoriza_imagem !== false,
+      },
+      parcelas: parcelas.map((p) => ({
+        numero: p.numero,
+        valor: Number(p.valor),
+        vencimento: p.vencimento,
+        status: p.status,
+        data_pagamento: p.data_pagamento,
+        forma_pagamento: p.forma_pagamento,
+      })),
+      texto: textoContrato || contrato.texto_contrato || CLAUSULAS_PADRAO,
+    });
+    toast.success("Download do contrato em PDF iniciado!");
+  };
+
   const hoje = new Date().toISOString().slice(0, 10);
   const totalPago = parcelas.reduce((s, p) => s + Number(p.valor_pago), 0);
   const totalParcelas = parcelas.reduce((s, p) => s + Number(p.valor), 0);
@@ -398,7 +563,9 @@ function AlunoDetalhe() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{aluno?.nome_completo ?? "Formando"}</h1>
-            {aluno?.user_id ? (
+            {aluno?.status === "inativo" ? (
+              <Badge variant="destructive" className="bg-amber-600 hover:bg-amber-700 text-white">Inativo</Badge>
+            ) : aluno?.user_id ? (
               <Badge className="bg-emerald-600">Acesso Ativo (CPF: {aluno.login_usuario})</Badge>
             ) : (
               <Badge variant="secondary">Sem acesso gerado</Badge>
@@ -423,6 +590,27 @@ function AlunoDetalhe() {
             <Trash2 className="size-4" /> Excluir Formando
           </Button>
 
+          {aluno?.status === "inativo" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => reativarAluno.mutate()}
+              disabled={reativarAluno.isPending}
+              className="gap-1.5 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/20"
+            >
+              <UserX className="size-4" /> Reativar Cadastro
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setOpenInativarAluno(true)}
+              className="gap-1.5 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-950/20"
+            >
+              <UserX className="size-4" /> Inativar Cliente
+            </Button>
+          )}
+
           {!aluno?.user_id && (
             <Button size="sm" onClick={() => gerarAcesso.mutate()} disabled={gerarAcesso.isPending} className="gap-1.5">
               <KeyRound className="size-4" /> Liberar Acesso (Login CPF)
@@ -430,6 +618,25 @@ function AlunoDetalhe() {
           )}
         </div>
       </div>
+
+      {aluno?.status === "inativo" && (
+        <Card className="mb-6 shadow-card border-amber-500/40 bg-amber-500/5">
+          <CardContent className="pt-6 text-sm text-foreground flex items-start gap-3">
+            <AlertCircle className="size-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-amber-700 dark:text-amber-500 block mb-1">Cadastro Inativo</strong>
+              <p className="text-muted-foreground text-xs">
+                Este formando foi inativado. 
+                {aluno.motivo_inativacao ? (
+                  <> Motivo registrado: <span className="font-semibold text-foreground">"{aluno.motivo_inativacao}"</span></>
+                ) : (
+                  " Nenhum motivo foi especificado."
+                )}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {!aluno?.user_id && (
         <Card className="mb-6 shadow-card border-gold/40 bg-gold/5">
@@ -442,23 +649,27 @@ function AlunoDetalhe() {
         </Card>
       )}
 
-      {/* SEÇÃO DE DADOS E TURMA (VISUAL IGUAL À ÁREA DO FORMANDO) */}
+      {/* LINHA DE DADOS */}
       {aluno && (
-        <div className="mb-6 grid gap-4 sm:grid-cols-2">
-          {/* Card Meus Dados */}
+        <div className="mb-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-start">
+          {/* Card 1: Dados do Formando */}
           <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-base">Meus Dados Cadastrais</CardTitle>
+            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                <User className="size-4 text-gold shrink-0" />
+                Dados do Formando
+              </CardTitle>
               <Button
-                variant={!showDados ? "default" : "ghost"}
+                variant={!showDados ? "default" : "secondary"}
                 size="sm"
+                className="h-7 text-xs px-2.5 rounded-md"
                 onClick={() => setShowDados(!showDados)}
               >
                 {showDados ? "Ocultar" : "Visualizar"}
               </Button>
             </CardHeader>
             {showDados && (
-              <CardContent className="space-y-1.5 text-sm">
+              <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
                 <Info label="Nome Completo" value={aluno.nome_completo} />
                 <Info label="CPF" value={aluno.cpf} />
                 {aluno.rg && <Info label="RG" value={aluno.rg} />}
@@ -467,36 +678,154 @@ function AlunoDetalhe() {
                 <Info label="E-mail" value={aluno.email} />
                 <Info label="Endereço" value={aluno.endereco} />
                 <Info label="Cidade" value={aluno.cidade} />
+                {aluno.data_nascimento && (
+                  <Info label="Data Nasc." value={new Date(aluno.data_nascimento + "T12:00:00").toLocaleDateString("pt-BR")} />
+                )}
               </CardContent>
             )}
           </Card>
 
-          {/* Card Minha Turma e Opções */}
+          {/* Card 2: Dados da Turma */}
           <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-base">Minha Turma & Opções</CardTitle>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary">{aluno.status ?? "Ativo"}</Badge>
-                <Button
-                  variant={!showTurma ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setShowTurma(!showTurma)}
-                >
-                  {showTurma ? "Ocultar" : "Visualizar"}
-                </Button>
-              </div>
+            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                <GraduationCap className="size-4 text-gold shrink-0" />
+                Dados da Turma
+              </CardTitle>
+              <Button
+                variant={!showTurma ? "default" : "secondary"}
+                size="sm"
+                className="h-7 text-xs px-2.5 rounded-md"
+                onClick={() => setShowTurma(!showTurma)}
+              >
+                {showTurma ? "Ocultar" : "Visualizar"}
+              </Button>
+              <Badge variant="secondary" className="text-[11px] py-0 px-1.5 ml-auto">
+                {aluno.status ?? "Ativo"}
+              </Badge>
             </CardHeader>
             {showTurma && (
-              <CardContent className="space-y-1.5 text-sm">
+              <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
                 <Info label="Turma" value={aluno.turmas?.nome} />
                 <Info label="Curso" value={aluno.turmas?.curso} />
                 <Info label="Faculdade" value={aluno.turmas?.faculdade} />
-                {contrato && (
+                {aluno.turmas?.semestre && <Info label="Semestre" value={aluno.turmas?.semestre} />}
+              </CardContent>
+            )}
+          </Card>
+
+          {/* Card 3: Pacote Escolhido */}
+          <Card className="shadow-card">
+            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                <Package className="size-4 text-gold shrink-0" />
+                Pacote Escolhido
+              </CardTitle>
+              <Button
+                variant={!showPacote ? "default" : "secondary"}
+                size="sm"
+                className="h-7 text-xs px-2.5 rounded-md"
+                onClick={() => setShowPacote(!showPacote)}
+              >
+                {showPacote ? "Ocultar" : "Visualizar"}
+              </Button>
+            </CardHeader>
+            {showPacote && (
+              <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
+                {contrato ? (
                   <>
                     <Info label="Pacote" value={contrato.pacote} />
                     <Info label="Valor Total" value={brl(Number(contrato.valor_total))} />
-                    <Info label="Condição" value={`${contrato.num_parcelas}x no boleto`} />
+                    {Number(contrato.desconto) > 0 && <Info label="Desconto" value={brl(Number(contrato.desconto))} />}
+                    {Number(contrato.valor_entrada) > 0 && <Info label="Entrada" value={brl(Number(contrato.valor_entrada))} />}
+                    <Info label="Condição" value={`${contrato.num_parcelas}x no ${contrato.forma_pagamento || "boleto"}`} />
+                    <Info label="Dia Vencimento" value={`Todo dia ${contrato.dia_vencimento || 10}`} />
+                    {aluno?.turmas?.semestre && <Info label="Semestre" value={aluno.turmas.semestre} />}
                   </>
+                ) : (
+                  <p className="text-muted-foreground text-xs py-2">Nenhum pacote contratado no momento.</p>
+                )}
+              </CardContent>
+            )}
+          </Card>
+
+          {/* Card 4: Contrato */}
+          <Card className="shadow-card">
+            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                <FileText className="size-4 text-gold shrink-0" />
+                Contrato
+              </CardTitle>
+              <Button
+                variant={!showContrato ? "default" : "secondary"}
+                size="sm"
+                className="h-7 text-xs px-2.5 rounded-md"
+                onClick={() => setShowContrato(!showContrato)}
+              >
+                {showContrato ? "Ocultar" : "Visualizar"}
+              </Button>
+            </CardHeader>
+            {showContrato && (
+              <CardContent className="p-4 pt-0 space-y-2 text-xs border-t border-border/40 mt-1 pt-2.5">
+                {contrato ? (
+                  <>
+                    <p className="text-muted-foreground text-xs">
+                      Documento de <span className="font-medium text-foreground">{contrato.pacote}</span>
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-7 text-xs px-2.5 gap-1">
+                            <Eye className="size-3.5" /> Ver / Editar
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+                          <DialogHeader>
+                            <DialogTitle>Contrato</DialogTitle>
+                          </DialogHeader>
+                          <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-sm mt-2">
+                            <div className="flex items-center justify-between">
+                              <Label htmlFor="texto-contrato-page" className="font-semibold">Cláusulas (editáveis)</Label>
+                              <button
+                                type="button"
+                                className="text-xs text-muted-foreground underline hover:text-foreground"
+                                onClick={() => setTextoContrato(CLAUSULAS_PADRAO)}
+                              >
+                                restaurar modelo padrão
+                              </button>
+                            </div>
+                            <Textarea
+                              id="texto-contrato-page"
+                              value={textoContrato}
+                              onChange={(e) => setTextoContrato(e.target.value)}
+                              className="min-h-[340px] font-mono text-xs leading-relaxed"
+                            />
+                          </div>
+                          <DialogFooter>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={salvarContratoTexto.isPending}
+                              onClick={() => salvarContratoTexto.mutate()}
+                              className="gap-1.5"
+                            >
+                              <Save className="size-4" /> Salvar Alterações
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs px-2.5 gap-1"
+                        onClick={handleBaixarContratoPdf}
+                      >
+                        <FileDown className="size-3.5" /> Baixar PDF
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground text-xs py-2">Nenhum contrato gerado ainda.</p>
                 )}
               </CardContent>
             )}
@@ -504,8 +833,167 @@ function AlunoDetalhe() {
         </div>
       )}
 
+      {/* LINHA DE SELEÇÃO */}
+      {aluno && (
+        <div className="mb-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-start">
+          {/* Card 1: Seleção */}
+          <Card className="shadow-card h-full flex flex-col">
+            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                <Camera className="size-4 text-gold shrink-0" />
+                SELEÇÃO
+              </CardTitle>
+              <Button
+                variant={!showSel1 ? "default" : "secondary"}
+                size="sm"
+                className="h-7 text-xs px-2.5 rounded-md ml-auto"
+                onClick={() => setShowSel1(!showSel1)}
+              >
+                {showSel1 ? "Ocultar" : "Visualizar"}
+              </Button>
+            </CardHeader>
+            {showSel1 && (
+              <CardContent className="p-4 pt-0 text-xs text-muted-foreground border-t border-border/40 mt-1 pt-2.5 flex-1 flex flex-col">
+                <p className="mb-3">Plataforma YouFocus. O Formando acessa com o mesmo CPF.</p>
+                <Button asChild variant="secondary" size="sm" className="w-full mt-auto">
+                  <a href={SELPICS_URL} target="_blank" rel="noopener noreferrer">
+                    Acessar Link <ExternalLink className="size-3.5 ml-1" />
+                  </a>
+                </Button>
+              </CardContent>
+            )}
+          </Card>
+
+          {/* Card 2: Minhas Fotos Selecionadas */}
+          <Card className="shadow-card h-full flex flex-col">
+            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                <CheckCircle2 className="size-4 text-gold shrink-0" />
+                MINHAS FOTOS SELECIONADAS
+              </CardTitle>
+              <Button
+                variant={!showSel2 ? "default" : "secondary"}
+                size="sm"
+                className="h-7 text-xs px-2.5 rounded-md ml-auto"
+                onClick={() => setShowSel2(!showSel2)}
+              >
+                {showSel2 ? "Ocultar" : "Visualizar"}
+              </Button>
+            </CardHeader>
+            {showSel2 && (
+              <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1">
+                <form 
+                  className="space-y-3 flex flex-col h-full"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const form = new FormData(e.currentTarget);
+                    const prazoStr = form.get("prazo_fotos_selecionadas") as string;
+                    updateLinksAluno.mutate({
+                      link_fotos_selecionadas: form.get("link_fotos_selecionadas") as string || null,
+                      prazo_fotos_selecionadas: prazoStr ? parseInt(prazoStr, 10) : null,
+                      fotos_liberadas: form.get("fotos_liberadas") === "on",
+                    });
+                  }}
+                >
+                  <div className="space-y-1">
+                    <Label className="text-xs">Link de Hospedagem</Label>
+                    <Input 
+                      name="link_fotos_selecionadas" 
+                      className="h-8 text-xs" 
+                      placeholder="https://..." 
+                      defaultValue={aluno.link_fotos_selecionadas || ""} 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Prazo de Vencimento (Dias)</Label>
+                    <Input 
+                      name="prazo_fotos_selecionadas" 
+                      type="number" 
+                      className="h-8 text-xs" 
+                      placeholder="Ex: 150"
+                      defaultValue={aluno.prazo_fotos_selecionadas || ""} 
+                    />
+                  </div>
+                  <div className="flex items-center space-x-2 pt-1 pb-1">
+                    <Switch 
+                      id="fotos_liberadas" 
+                      name="fotos_liberadas" 
+                      defaultChecked={aluno.fotos_liberadas || false} 
+                    />
+                    <Label htmlFor="fotos_liberadas" className="text-xs font-medium cursor-pointer">
+                      Liberar visualização
+                    </Label>
+                  </div>
+                  <div className="flex-1"></div>
+                  <Button size="sm" className="w-full h-8 text-xs mt-3" disabled={updateLinksAluno.isPending}>
+                    {updateLinksAluno.isPending ? "Salvando..." : "Salvar Configurações"}
+                  </Button>
+                </form>
+              </CardContent>
+            )}
+          </Card>
+
+          {/* Card 3: Aprovação de Álbum */}
+          <Card className="shadow-card h-full flex flex-col">
+            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                <FileText className="size-4 text-gold shrink-0" />
+                APROVAÇÃO DE ÁLBUM
+              </CardTitle>
+              <Button
+                variant={!showSel3 ? "default" : "secondary"}
+                size="sm"
+                className="h-7 text-xs px-2.5 rounded-md ml-auto"
+                onClick={() => setShowSel3(!showSel3)}
+              >
+                {showSel3 ? "Ocultar" : "Visualizar"}
+              </Button>
+            </CardHeader>
+            {showSel3 && (
+              <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1">
+                <form 
+                  className="space-y-3 h-full flex flex-col"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const form = new FormData(e.currentTarget);
+                    updateLinksAluno.mutate({
+                      link_aprovacao_album: form.get("link_aprovacao_album") as string || null,
+                      album_liberado: form.get("album_liberado") === "on",
+                    });
+                  }}
+                >
+                  <div className="space-y-1">
+                    <Label className="text-xs">Link do Álbum</Label>
+                    <Input 
+                      name="link_aprovacao_album" 
+                      className="h-8 text-xs" 
+                      placeholder="https://..." 
+                      defaultValue={aluno.link_aprovacao_album || ""} 
+                    />
+                  </div>
+                  <div className="flex items-center space-x-2 pt-1 pb-1">
+                    <Switch 
+                      id="album_liberado" 
+                      name="album_liberado" 
+                      defaultChecked={aluno.album_liberado || false} 
+                    />
+                    <Label htmlFor="album_liberado" className="text-xs font-medium cursor-pointer">
+                      Liberar visualização
+                    </Label>
+                  </div>
+                  <div className="flex-1"></div>
+                  <Button size="sm" className="w-full h-8 text-xs mt-auto" disabled={updateLinksAluno.isPending}>
+                    {updateLinksAluno.isPending ? "Salvando..." : "Salvar Aprovação"}
+                  </Button>
+                </form>
+              </CardContent>
+            )}
+          </Card>
+        </div>
+      )}
+
       {/* SEÇÃO DO CONTRATO E FINANCEIRO */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center gap-4">
         <h2 className="text-lg font-semibold flex items-center gap-2">
           <CreditCard className="size-5 text-gold" /> Contrato, Pacote & Parcelamento
         </h2>
@@ -513,8 +1001,8 @@ function AlunoDetalhe() {
         {!contrato ? (
           <Dialog open={openCreateContrato} onOpenChange={setOpenCreateContrato}>
             <DialogTrigger asChild>
-              <Button className="gap-1.5">
-                <Plus className="size-4" /> Criar contrato & pacote
+              <Button variant="outline" size="sm" className="h-7 text-xs px-2.5 rounded-md gap-1.5">
+                <Plus className="size-3.5" /> Criar contrato & pacote
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-xl">
@@ -566,16 +1054,16 @@ function AlunoDetalhe() {
           </Dialog>
         ) : (
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setOpenEditContrato(true)} className="gap-1.5">
-              <Edit className="size-4" /> Editar Pacote / Contrato
+            <Button variant="outline" size="sm" onClick={() => setOpenEditContrato(true)} className="h-7 text-xs px-2.5 rounded-md gap-1.5">
+              <Edit className="size-3.5" /> Editar Pacote / Contrato
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setOpenDeleteContrato(true)}
-              className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              className="h-7 text-xs px-2.5 rounded-md gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
-              <Trash2 className="size-4" /> Excluir Contrato
+              <Trash2 className="size-3.5" /> Excluir Contrato
             </Button>
           </div>
         )}
@@ -591,11 +1079,11 @@ function AlunoDetalhe() {
 
       {contrato && (
         <div className="space-y-6">
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Resumo titulo="Valor do contrato" valor={brl(Number(contrato.valor_total))} />
-            <Resumo titulo="Total parcelado" valor={brl(totalParcelas)} />
-            <Resumo titulo="Recebido" valor={brl(totalPago)} />
-            <Resumo titulo="Em atraso" valor={String(atrasadas.length)} destaque={atrasadas.length > 0} />
+          <div className="flex flex-wrap items-start gap-3">
+            <Resumo titulo="Valor do contrato" valor={brl(Number(contrato.valor_total))} icon={FileText} />
+            <Resumo titulo="Total parcelado" valor={brl(totalParcelas)} icon={CreditCard} />
+            <Resumo titulo="Recebido" valor={brl(totalPago)} icon={CheckCircle2} />
+            <Resumo titulo="Em atraso" valor={String(atrasadas.length)} destaque={atrasadas.length > 0} icon={AlertCircle} />
           </div>
 
           {/* PARCELAS */}
@@ -643,23 +1131,6 @@ function AlunoDetalhe() {
               })}
             </CardContent>
           </Card>
-
-          {/* DOCUMENTO OFICIAL DO CONTRATO */}
-          {aluno && (
-            <ContratoDocumento
-              alunoId={alunoId}
-              aluno={aluno}
-              contrato={contrato}
-              parcelas={parcelas.map((p) => ({
-                numero: p.numero,
-                valor: Number(p.valor),
-                vencimento: p.vencimento,
-                status: p.status,
-                data_pagamento: p.data_pagamento,
-                forma_pagamento: p.forma_pagamento,
-              }))}
-            />
-          )}
         </div>
       )}
 
@@ -826,16 +1297,61 @@ function AlunoDetalhe() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* DIALOG: INATIVAR ALUNO */}
+      <Dialog open={openInativarAluno} onOpenChange={setOpenInativarAluno}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="text-amber-600 flex items-center gap-2">
+              <UserX className="size-5" /> Inativar Cliente
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              <strong>Tem certeza que deseja inativar o cadastro de {aluno?.nome_completo}?</strong><br />
+              Você está prestes a inativar este formando. Ele não aparecerá mais na listagem ativa da turma.
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="motivo">Motivo da Inativação *</Label>
+              <Textarea
+                id="motivo"
+                placeholder="Ex: Formando desistiu da formatura, trancou o curso, etc."
+                value={motivoInativacao}
+                onChange={(e) => setMotivoInativacao(e.target.value)}
+                rows={4}
+                required
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenInativarAluno(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => inativarAluno.mutate(motivoInativacao)}
+              disabled={!motivoInativacao.trim() || inativarAluno.isPending}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {inativarAluno.isPending ? "Inativando..." : "Confirmar Inativação"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
 
-function Resumo({ titulo, valor, destaque }: { titulo: string; valor: string; destaque?: boolean }) {
+function Resumo({ titulo, valor, destaque, icon: Icon }: { titulo: string; valor: string; destaque?: boolean; icon?: any }) {
   return (
-    <Card className="shadow-card">
-      <CardContent className="pt-6">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">{titulo}</p>
-        <p className={`mt-1 text-lg font-semibold ${destaque ? "text-destructive" : ""}`}>{valor}</p>
+    <Card className="shadow-card h-full flex flex-col min-w-[160px]">
+      <CardHeader className="flex flex-row items-center gap-2 p-3 pb-2">
+        <CardTitle className="text-[11px] font-semibold flex items-center gap-1.5 shrink-0 uppercase">
+          {Icon && <Icon className="size-3.5 text-gold shrink-0" />}
+          {titulo}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-3 pt-0 text-xs border-t border-border/40 mt-1 pt-2 flex-1 flex flex-col justify-center">
+        <p className={`text-base font-semibold ${destaque ? "text-destructive" : ""}`}>{valor}</p>
       </CardContent>
     </Card>
   );

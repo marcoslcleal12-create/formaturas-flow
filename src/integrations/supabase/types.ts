@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       alunos: {
         Row: {
+          album_liberado: boolean | null
           cidade: string | null
           cpf: string | null
           created_at: string
@@ -23,18 +24,25 @@ export type Database = {
           email: string | null
           endereco: string | null
           foto_url: string | null
+          fotos_liberadas: boolean | null
           id: string
+          link_aprovacao_album: string | null
+          link_fotos_selecionadas: string | null
           login_usuario: string | null
           nome_completo: string
+          prazo_fotos_selecionadas: number | null
           rg: string | null
           status: string
+          motivo_inativacao: string | null
           telefone: string | null
           turma_id: string
           updated_at: string
           user_id: string | null
+          vencimento_fotos_selecionadas: string | null
           whatsapp: string | null
         }
         Insert: {
+          album_liberado?: boolean | null
           cidade?: string | null
           cpf?: string | null
           created_at?: string
@@ -42,18 +50,25 @@ export type Database = {
           email?: string | null
           endereco?: string | null
           foto_url?: string | null
+          fotos_liberadas?: boolean | null
           id?: string
+          link_aprovacao_album?: string | null
+          link_fotos_selecionadas?: string | null
           login_usuario?: string | null
           nome_completo: string
+          prazo_fotos_selecionadas?: number | null
           rg?: string | null
           status?: string
+          motivo_inativacao?: string | null
           telefone?: string | null
           turma_id: string
           updated_at?: string
           user_id?: string | null
+          vencimento_fotos_selecionadas?: string | null
           whatsapp?: string | null
         }
         Update: {
+          album_liberado?: boolean | null
           cidade?: string | null
           cpf?: string | null
           created_at?: string
@@ -61,15 +76,21 @@ export type Database = {
           email?: string | null
           endereco?: string | null
           foto_url?: string | null
+          fotos_liberadas?: boolean | null
           id?: string
+          link_aprovacao_album?: string | null
+          link_fotos_selecionadas?: string | null
           login_usuario?: string | null
           nome_completo?: string
+          prazo_fotos_selecionadas?: number | null
           rg?: string | null
           status?: string
+          motivo_inativacao?: string | null
           telefone?: string | null
           turma_id?: string
           updated_at?: string
           user_id?: string | null
+          vencimento_fotos_selecionadas?: string | null
           whatsapp?: string | null
         }
         Relationships: [
@@ -299,7 +320,6 @@ export type Database = {
           id: string
           nome: string
           observacoes: string | null
-          previsao_formatura: string | null
           semestre: string | null
           status: string
           updated_at: string
@@ -312,7 +332,6 @@ export type Database = {
           id?: string
           nome: string
           observacoes?: string | null
-          previsao_formatura?: string | null
           semestre?: string | null
           status?: string
           updated_at?: string
@@ -323,9 +342,8 @@ export type Database = {
           curso?: string
           faculdade?: string
           id?: string
-          nome?: string
           observacoes?: string | null
-          previsao_formatura?: string | null
+          nome?: string
           semestre?: string | null
           status?: string
           updated_at?: string

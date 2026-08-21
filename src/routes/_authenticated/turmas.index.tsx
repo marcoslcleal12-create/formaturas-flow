@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Plus, Edit, Trash2, MoreVertical, GraduationCap, Building2, MapPin, Calendar } from "lucide-react";
+import { Plus, Edit, Trash2, MoreVertical, GraduationCap, Building2, MapPin, Calendar, Search } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -61,7 +61,6 @@ const turmaSchema = z.object({
   faculdade: z.string().trim().min(2, "Informe a faculdade").max(120),
   cidade: z.string().trim().max(120).optional(),
   semestre: z.string().trim().max(20).optional(),
-  previsao_formatura: z.string().trim().max(10).optional(),
   status: z.string().optional(),
 });
 
@@ -72,7 +71,6 @@ interface TurmaData {
   faculdade: string;
   cidade: string | null;
   semestre: string | null;
-  previsao_formatura: string | null;
   status: string;
   alunos?: { count: number }[];
 }
@@ -82,6 +80,7 @@ function TurmasPage() {
   const [openCreate, setOpenCreate] = useState(false);
   const [editingTurma, setEditingTurma] = useState<TurmaData | null>(null);
   const [deletingTurma, setDeletingTurma] = useState<TurmaData | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: turmas = [], isLoading } = useQuery({
     queryKey: ["turmas"],
@@ -103,7 +102,6 @@ function TurmasPage() {
         faculdade: form.get("faculdade"),
         cidade: form.get("cidade") || undefined,
         semestre: form.get("semestre") || undefined,
-        previsao_formatura: form.get("previsao_formatura") || undefined,
       });
       const { error } = await supabase.from("turmas").insert({
         nome: parsed.nome,
@@ -111,7 +109,6 @@ function TurmasPage() {
         faculdade: parsed.faculdade,
         cidade: parsed.cidade ?? null,
         semestre: parsed.semestre ?? null,
-        previsao_formatura: parsed.previsao_formatura || null,
         status: "ativa",
       });
       if (error) throw error;
@@ -134,7 +131,6 @@ function TurmasPage() {
         faculdade: form.get("faculdade"),
         cidade: form.get("cidade") || undefined,
         semestre: form.get("semestre") || undefined,
-        previsao_formatura: form.get("previsao_formatura") || undefined,
         status: form.get("status") || "ativa",
       });
       const { error } = await supabase
@@ -145,7 +141,6 @@ function TurmasPage() {
           faculdade: parsed.faculdade,
           cidade: parsed.cidade ?? null,
           semestre: parsed.semestre ?? null,
-          previsao_formatura: parsed.previsao_formatura || null,
           status: parsed.status ?? "ativa",
         })
         .eq("id", editingTurma.id);
@@ -172,6 +167,12 @@ function TurmasPage() {
     },
     onError: (error) => toast.error(`Erro ao excluir turma: ${(error as Error).message}`),
   });
+
+  const filteredTurmas = turmas.filter((t) => 
+    t.nome.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    t.curso.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    t.faculdade.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <AppShell>
@@ -218,10 +219,27 @@ function TurmasPage() {
         </Dialog>
       </div>
 
+      <div className="mb-6 relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <Search className="size-4 text-muted-foreground" />
+        </div>
+        <Input 
+          type="search" 
+          placeholder="Pesquisar por nome da turma, curso ou faculdade..." 
+          className="pl-9 max-w-md bg-background"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
       {isLoading && <p className="text-sm text-muted-foreground">Carregando turmas…</p>}
+      
+      {filteredTurmas.length === 0 && !isLoading && (
+        <p className="text-sm text-muted-foreground">Nenhuma turma encontrada.</p>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {turmas.map((turma) => (
+        {filteredTurmas.map((turma) => (
           <Card key={turma.id} className="relative group hover:shadow-elevated transition-all border-border/80">
             <CardContent className="pt-6">
               <div className="flex items-start justify-between gap-2">
@@ -331,12 +349,6 @@ function TurmasPage() {
                   defaultValue={editingTurma.semestre || ""}
                 />
               </div>
-              <Field
-                name="previsao_formatura"
-                label="Previsão de formatura"
-                type="date"
-                defaultValue={editingTurma.previsao_formatura || ""}
-              />
               <div className="space-y-1.5">
                 <Label htmlFor="status">Status da Turma</Label>
                 <select

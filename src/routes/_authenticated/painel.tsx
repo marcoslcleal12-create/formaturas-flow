@@ -1,7 +1,23 @@
 import { useState, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Camera, ExternalLink, FileDown, Lock, Printer, Calendar, MapPin, Heart, PartyPopper, UserCheck } from "lucide-react";
+import { 
+  Camera, 
+  ExternalLink, 
+  FileDown, 
+  Lock, 
+  Printer, 
+  Calendar, 
+  MapPin, 
+  Heart, 
+  PartyPopper, 
+  UserCheck, 
+  User, 
+  Package, 
+  FileText, 
+  Eye,
+  CheckCircle2
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/app/AppShell";
@@ -25,6 +41,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const SELPICS_URL = "https://jm-studio-fotografico.youfocus.com.br/";
 
@@ -45,11 +68,14 @@ function PainelAluno() {
   const userDigits = apenasDigitos(user?.email?.split("@")[0] ?? user?.id ?? "");
 
   const [showDados, setShowDados] = useState(false);
-  const [showTurma, setShowTurma] = useState(false);
+  const [showPacote, setShowPacote] = useState(false);
+  const [showContrato, setShowContrato] = useState(false);
   const [showOverdueAlert, setShowOverdueAlert] = useState(false);
 
+  const [selectedAlunoId, setSelectedAlunoId] = useState<string | null>(null);
+
   // 1. Check if user is a Formando in Supabase (by user_id or by CPF)
-  const { data: aluno } = useQuery({
+  const { data: alunos } = useQuery({
     queryKey: ["meu-cadastro", user?.id, userDigits],
     enabled: !!user,
     queryFn: async () => {
@@ -57,23 +83,29 @@ function PainelAluno() {
       if (user?.id && user.id.includes("-")) {
         const { data } = await supabase
           .from("alunos")
-          .select("*, turmas(nome, curso, faculdade, semestre, previsao_formatura)")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        if (data) return data;
+          .select("*, turmas(nome, curso, faculdade, semestre)")
+          .eq("user_id", user.id);
+        if (data && data.length > 0) return data;
       }
       // Tenta por CPF (11 dígitos)
       if (userDigits && userDigits.length === 11) {
         const { data } = await supabase
           .from("alunos")
-          .select("*, turmas(nome, curso, faculdade, semestre, previsao_formatura)")
-          .eq("cpf", userDigits)
-          .maybeSingle();
-        if (data) return data;
+          .select("*, turmas(nome, curso, faculdade, semestre)")
+          .eq("cpf", userDigits);
+        if (data && data.length > 0) return data;
       }
-      return null;
+      return [];
     },
   });
+
+  const aluno = alunos?.find(a => a.id === selectedAlunoId) || alunos?.[0];
+
+  useEffect(() => {
+    if (alunos && alunos.length > 0 && !selectedAlunoId) {
+      setSelectedAlunoId(alunos[0]!.id);
+    }
+  }, [alunos, selectedAlunoId]);
 
   // 2. Check if user has a graduation contract in Supabase
   const { data: contrato } = useQuery({
@@ -129,6 +161,7 @@ function PainelAluno() {
       }, 120000); // 2 minutos
       return () => clearInterval(interval);
     }
+    return undefined;
   }, [temBoletosAtrasados]);
 
   const handleBaixarPdf = () => {
@@ -329,7 +362,7 @@ function PainelAluno() {
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
               <div>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <FileDown className="size-4 text-primary" /> Contrato de Prestação de Serviços
+                  <FileDown className="size-4 text-primary" /> Contrato
                 </CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Documento contratual referente a {demandaCliente.pacote}
@@ -345,7 +378,7 @@ function PainelAluno() {
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
                   <DialogHeader>
-                    <DialogTitle>Contrato de Prestação de Serviços</DialogTitle>
+                    <DialogTitle>Contrato</DialogTitle>
                   </DialogHeader>
                   <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-sm mt-2">
                     <div className="space-y-1.5">
@@ -370,87 +403,260 @@ function PainelAluno() {
 
       {/* CASO 2: FORMANDO DE TURMA */}
       {aluno && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Card className="shadow-card sm:col-span-2">
-            <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Camera className="size-4 text-primary" /> Seleção de fotos
-              </CardTitle>
-              <Button asChild variant="secondary" size="sm">
-                <a href={SELPICS_URL} target="_blank" rel="noopener noreferrer">
-                  Selecionar minhas fotos <ExternalLink className="size-4" />
-                </a>
-              </Button>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Escolha as fotos da sua formatura na plataforma YouFocus usando o mesmo CPF do seu acesso.
-            </CardContent>
-          </Card>
-
-          {/* Card Meus Dados */}
-          <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-base">Meus Dados Cadastrais</CardTitle>
-              <Button 
-                variant={!showDados ? "default" : "ghost"} 
-                size="sm" 
-                onClick={() => setShowDados(!showDados)}
-              >
-                {showDados ? "Ocultar" : "Visualizar"}
-              </Button>
-            </CardHeader>
-            {showDados && (
-              <CardContent className="space-y-1.5 text-sm">
-                <Info label="Nome Completo" value={aluno.nome_completo} />
-                <Info label="CPF (Login)" value={aluno.cpf} />
-                {aluno.rg && <Info label="RG" value={aluno.rg} />}
-                <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
-                <Info label="WhatsApp" value={aluno.whatsapp} />
-                <Info label="E-mail" value={aluno.email} />
-                <Info label="Endereço" value={aluno.endereco} />
-                <Info label="Cidade" value={aluno.cidade} />
+        <div className="space-y-4">
+          {alunos && alunos.length > 1 && (
+            <Card className="shadow-sm border-primary/20 bg-primary/5">
+              <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-sm">Você possui múltiplos vínculos</h3>
+                  <p className="text-xs text-muted-foreground">Selecione a turma que deseja visualizar no painel:</p>
+                </div>
+                <Select value={selectedAlunoId || ""} onValueChange={(val) => setSelectedAlunoId(val)}>
+                  <SelectTrigger className="w-full sm:w-[300px] h-9 text-xs">
+                    <SelectValue placeholder="Selecione a turma" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {alunos.map((a) => (
+                      <SelectItem key={a.id} value={a.id} className="text-xs">
+                        {a.turmas?.nome} ({a.turmas?.curso})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </CardContent>
-            )}
-          </Card>
+            </Card>
+          )}
 
-          {/* Card Minha Turma e Opções */}
-          <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-base">Minha Turma & Opções</CardTitle>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary">{aluno.status}</Badge>
-                <Button 
-                  variant={!showTurma ? "default" : "ghost"} 
-                  size="sm" 
-                  onClick={() => setShowTurma(!showTurma)}
-                >
-                  {showTurma ? "Ocultar" : "Visualizar"}
+          {/* LINHA DE SELEÇÃO */}
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-start">
+            {/* Card 1: Seleção de Fotos */}
+            <Card className="shadow-card h-full flex flex-col">
+              <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                  <Camera className="size-4 text-primary shrink-0" />
+                  SELEÇÃO DE FOTOS
+                </CardTitle>
+                <Button asChild variant="secondary" size="sm" className="h-7 text-xs px-2.5 rounded-md ml-auto">
+                  <a href={SELPICS_URL} target="_blank" rel="noopener noreferrer">
+                    Selecionar minhas fotos <ExternalLink className="size-3.5 ml-1" />
+                  </a>
                 </Button>
-              </div>
-            </CardHeader>
-            {showTurma && (
-              <CardContent className="space-y-1.5 text-sm">
-                <Info label="Turma" value={aluno.turmas?.nome} />
-                <Info label="Curso" value={aluno.turmas?.curso} />
-                <Info label="Faculdade" value={aluno.turmas?.faculdade} />
-                <Info label="Semestre" value={aluno.turmas?.semestre} />
-                {contrato && (
-                  <>
-                    <Info
-                      label="Uso de Imagem"
-                      value={contrato.autoriza_imagem !== false ? "Sim, autorizado para divulgação" : "Não autorizado"}
-                    />
-                    <Info
-                      label="Vencimento dos Boletos"
-                      value={`Todo dia ${contrato.dia_vencimento || 10}`}
-                    />
-                  </>
-                )}
+              </CardHeader>
+              <CardContent className="p-4 pt-0 text-xs text-muted-foreground border-t border-border/40 mt-1 pt-2.5 flex-1">
+                Escolha as fotos da sua formatura na plataforma YouFocus usando o mesmo CPF do seu acesso.
               </CardContent>
-            )}
-          </Card>
+            </Card>
 
-          <Card className="shadow-card sm:col-span-2">
+            {/* Card 2: Minhas Fotos Selecionadas */}
+            {aluno.fotos_liberadas && (
+              <Card className="shadow-card h-full flex flex-col">
+                <CardHeader className="p-4 pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                    <CheckCircle2 className="size-4 text-primary shrink-0" />
+                    MINHAS FOTOS SELECIONADAS
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1 flex flex-col justify-center">
+                {(() => {
+                  const expirou = aluno.vencimento_fotos_selecionadas && new Date() > new Date(aluno.vencimento_fotos_selecionadas + "T23:59:59");
+                  if (expirou) {
+                    return (
+                      <div className="text-[11px] text-destructive text-justify leading-relaxed">
+                        <p className="mb-2 font-medium">Verificamos que o link de acesso às suas fotos já expirou, pois ultrapassou o prazo de armazenamento estabelecido pela empresa.</p>
+                        <p className="mb-2">Durante esse período, as fotos permaneceram armazenadas em nosso sistema, o que gerou custos de manutenção e backup dos arquivos. Como o prazo estipulado já foi ultrapassado, o acesso às fotos não está mais disponível pelo link anterior.</p>
+                        <p>Caso queira recuperar o acesso às suas fotos, pedimos que entre em contato conosco para verificarmos a disponibilidade dos arquivos e realizarmos uma nova negociação referente ao período adicional de armazenamento e recuperação.</p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <Button asChild className="w-full h-8 text-xs" disabled={!aluno.link_fotos_selecionadas}>
+                      {aluno.link_fotos_selecionadas ? (
+                        <a href={aluno.link_fotos_selecionadas} target="_blank" rel="noopener noreferrer">
+                          Acessar Fotos <ExternalLink className="size-3.5 ml-1.5" />
+                        </a>
+                      ) : (
+                        <span className="pointer-events-none opacity-50">Acessar Fotos</span>
+                      )}
+                    </Button>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+            )}
+
+            {/* Card 3: Aprovação de Álbum */}
+            {aluno.album_liberado && (
+              <Card className="shadow-card h-full flex flex-col">
+                <CardHeader className="p-4 pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                    <FileText className="size-4 text-primary shrink-0" />
+                    APROVAÇÃO DE ÁLBUM
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1 flex flex-col justify-center">
+                  <Button asChild className="w-full h-8 text-xs" disabled={!aluno.link_aprovacao_album}>
+                    {aluno.link_aprovacao_album ? (
+                      <a href={aluno.link_aprovacao_album} target="_blank" rel="noopener noreferrer">
+                        Acessar Álbum <ExternalLink className="size-3.5 ml-1.5" />
+                      </a>
+                    ) : (
+                      <span className="pointer-events-none opacity-50">Acessar Álbum</span>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* LINHA DE DADOS */}
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 items-start">
+            {/* Card 1: Meus Dados Cadastrais */}
+            <Card className="shadow-card">
+              <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                  <User className="size-4 text-gold shrink-0" />
+                  Meus Dados Cadastrais
+                </CardTitle>
+                <Button 
+                  variant={!showDados ? "default" : "secondary"} 
+                  size="sm" 
+                  className="h-7 text-xs px-2.5 rounded-md"
+                  onClick={() => setShowDados(!showDados)}
+                >
+                  {showDados ? "Ocultar" : "Visualizar"}
+                </Button>
+              </CardHeader>
+              {showDados && (
+                <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
+                  <Info label="Nome Completo" value={aluno.nome_completo} />
+                  <Info label="CPF (Login)" value={aluno.cpf} />
+                  {aluno.rg && <Info label="RG" value={aluno.rg} />}
+                  <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
+                  <Info label="WhatsApp" value={aluno.whatsapp} />
+                  <Info label="E-mail" value={aluno.email} />
+                  <Info label="Endereço" value={aluno.endereco} />
+                  <Info label="Cidade" value={aluno.cidade} />
+                </CardContent>
+              )}
+            </Card>
+
+            {/* Card 2: Pacote Escolhido */}
+            <Card className="shadow-card">
+              <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                  <Package className="size-4 text-gold shrink-0" />
+                  Pacote Escolhido
+                </CardTitle>
+                <Button 
+                  variant={!showPacote ? "default" : "secondary"} 
+                  size="sm" 
+                  className="h-7 text-xs px-2.5 rounded-md"
+                  onClick={() => setShowPacote(!showPacote)}
+                >
+                  {showPacote ? "Ocultar" : "Visualizar"}
+                </Button>
+              </CardHeader>
+              {showPacote && (
+                <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
+                  {contrato ? (
+                    <>
+                      <Info label="Pacote" value={contrato.pacote} />
+                      <Info label="Valor Total" value={brl(Number(contrato.valor_total))} />
+                      {Number(contrato.desconto) > 0 && <Info label="Desconto" value={brl(Number(contrato.desconto))} />}
+                      {Number(contrato.valor_entrada) > 0 && <Info label="Entrada" value={brl(Number(contrato.valor_entrada))} />}
+                      <Info label="Condição" value={`${contrato.num_parcelas}x no ${contrato.forma_pagamento || "boleto"}`} />
+                      <Info label="Vencimento dos Boletos" value={`Todo dia ${contrato.dia_vencimento || 10}`} />
+                      <Info
+                        label="Uso de Imagem"
+                        value={contrato.autoriza_imagem !== false ? "Sim, autorizado para divulgação" : "Não autorizado"}
+                      />
+                      {aluno?.turmas?.semestre && (
+                        <Info label="Semestre" value={aluno.turmas.semestre} />
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-muted-foreground text-xs py-2">Seu pacote ainda está sendo definido pela administração.</p>
+                  )}
+                </CardContent>
+              )}
+            </Card>
+
+            {/* Card 3: Contrato */}
+            <Card className="shadow-card">
+              <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                  <FileText className="size-4 text-gold shrink-0" />
+                  Contrato
+                </CardTitle>
+                <Button 
+                  variant={!showContrato ? "default" : "secondary"} 
+                  size="sm" 
+                  className="h-7 text-xs px-2.5 rounded-md"
+                  onClick={() => setShowContrato(!showContrato)}
+                >
+                  {showContrato ? "Ocultar" : "Visualizar"}
+                </Button>
+              </CardHeader>
+              {showContrato && (
+                <CardContent className="p-4 pt-0 space-y-2 text-xs border-t border-border/40 mt-1 pt-2.5">
+                  {contrato ? (
+                    <>
+                      <p className="text-muted-foreground text-xs">
+                        Documento oficial referente a <span className="font-medium text-foreground">{contrato.pacote}</span>
+                      </p>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-7 text-xs px-2.5 gap-1">
+                              <Eye className="size-3.5" /> Visualizar Contrato
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+                            <DialogHeader>
+                              <DialogTitle>Contrato</DialogTitle>
+                            </DialogHeader>
+                            <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-sm mt-2">
+                              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                                <p className="text-xs font-medium text-muted-foreground">PACOTE CONTRATADO</p>
+                                <p className="text-sm font-semibold mt-0.5">{contrato.pacote}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Total: {brl(Number(contrato.valor_total))}
+                                  {Number(contrato.desconto) > 0 && ` (Desconto: ${brl(Number(contrato.desconto))})`}
+                                </p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                  Termos e Cláusulas Contratuais
+                                </p>
+                                <div className="rounded-xl border border-border bg-card p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text text-foreground/90 shadow-inner">
+                                  {contrato.texto_contrato || CLAUSULAS_PADRAO}
+                                </div>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs px-2.5 gap-1"
+                          onClick={handleBaixarPdf}
+                        >
+                          <FileDown className="size-3.5" /> Baixar em PDF
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-muted-foreground text-xs py-2">
+                      O modelo do seu contrato ainda está sendo preparado pela equipe da JM Formaturas.
+                    </p>
+                  )}
+                </CardContent>
+              )}
+            </Card>
+          </div>
+
+          {/* Acompanhamento Financeiro */}
+          <Card className="shadow-card">
             <CardHeader className="flex-row items-center justify-between">
               <CardTitle className="text-base">Acompanhamento Financeiro (Boletos)</CardTitle>
               {contrato && <Badge variant="secondary">{contrato.pacote}</Badge>}
@@ -510,72 +716,6 @@ function PainelAluno() {
                     })}
                   </div>
                 </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Contrato do Formando */}
-          <Card className="shadow-card sm:col-span-2">
-            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <FileDown className="size-4 text-primary" /> Contrato de Prestação de Serviços
-                </CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Documento contratual oficial gerado pela administração (somente leitura)
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="gap-1 border-border/80 text-muted-foreground text-xs py-1">
-                  <Lock className="size-3" /> Bloqueado para edição
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-3 pt-2">
-              {contrato ? (
-                <>
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        Visualizar Contrato
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-                      <DialogHeader>
-                        <DialogTitle>Contrato de Prestação de Serviços</DialogTitle>
-                      </DialogHeader>
-                      <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-sm mt-2">
-                        <div className="rounded-xl border border-border bg-muted/40 p-3">
-                          <p className="text-xs font-medium text-muted-foreground">PACOTE CONTRATADO</p>
-                          <p className="text-sm font-semibold mt-0.5">{contrato.pacote}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Total: {brl(Number(contrato.valor_total))}
-                            {Number(contrato.desconto) > 0 && ` (Desconto: ${brl(Number(contrato.desconto))})`}
-                          </p>
-                        </div>
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                            Termos e Cláusulas Contratuais
-                          </p>
-                          <div className="rounded-xl border border-border bg-card p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text text-foreground/90 shadow-inner">
-                            {contrato.texto_contrato || CLAUSULAS_PADRAO}
-                          </div>
-                        </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-
-                  <Button
-                    size="sm"
-                    onClick={handleBaixarPdf}
-                  >
-                    <FileDown className="size-4 mr-1.5" /> Baixar em PDF
-                  </Button>
-                </>
-              ) : (
-                <div className="w-full p-4 rounded-xl border border-border bg-muted/40 text-sm text-muted-foreground text-center">
-                  O modelo e os dados do seu contrato ainda estão sendo preparados pela equipe administrativa da JM Formaturas.
-                </div>
               )}
             </CardContent>
           </Card>

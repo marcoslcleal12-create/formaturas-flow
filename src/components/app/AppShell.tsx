@@ -11,6 +11,8 @@ import {
   PartyPopper,
   Camera,
   ChevronDown,
+  UserX,
+  ArrowLeftRight,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -198,6 +200,32 @@ export function AppShell({ children }: { children: ReactNode }) {
                           </CollapsibleContent>
                         </SidebarMenuItem>
                       </Collapsible>
+
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={currentPath.startsWith("/fluxo-caixa")}
+                          tooltip="FLUXO DE CAIXA"
+                        >
+                          <Link to="/fluxo-caixa" className="flex items-center gap-2.5 font-medium tracking-wide">
+                            <ArrowLeftRight className="size-4 text-emerald-500" />
+                            <span>FLUXO DE CAIXA</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={currentPath.startsWith("/inativos")}
+                          tooltip="INATIVOS"
+                        >
+                          <Link to="/inativos" className="flex items-center gap-2.5 font-medium tracking-wide">
+                            <UserX className="size-4 text-amber-600" />
+                            <span>INATIVOS</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </SidebarGroup>

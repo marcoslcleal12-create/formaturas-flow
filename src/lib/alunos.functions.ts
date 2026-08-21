@@ -159,6 +159,7 @@ export const realizarAdesaoPublica = createServerFn({ method: "POST" })
       .from("alunos")
       .select("id, user_id")
       .eq("cpf", cpfLimpo)
+      .eq("turma_id", data.turmaId)
       .maybeSingle();
 
     if (getAlunoError) throw getAlunoError;
@@ -170,6 +171,7 @@ export const realizarAdesaoPublica = createServerFn({ method: "POST" })
       const { error: updateAlunoError } = await supabaseAdmin
         .from("alunos")
         .update({
+          turma_id: data.turmaId,
           nome_completo: data.dadosPessoais.nome_completo.trim(),
           rg: data.dadosPessoais.rg?.trim() || null,
           telefone: data.dadosPessoais.telefone.trim(),

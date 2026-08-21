@@ -88,7 +88,6 @@ const turmaEditSchema = z.object({
   faculdade: z.string().trim().min(2, "Informe a faculdade").max(120),
   cidade: z.string().trim().max(120).optional(),
   semestre: z.string().trim().max(20).optional(),
-  previsao_formatura: z.string().trim().max(10).optional(),
   status: z.string().optional(),
 });
 
@@ -129,7 +128,7 @@ function TurmaDetalhe() {
     queryFn: async () => {
       const [turma, alunos, contratos] = await Promise.all([
         supabase.from("turmas").select("*").eq("id", turmaId).maybeSingle(),
-        supabase.from("alunos").select("*").eq("turma_id", turmaId).order("nome_completo"),
+        supabase.from("alunos").select("*").eq("turma_id", turmaId).neq("status", "inativo").order("nome_completo"),
         supabase.from("contratos").select("*, parcelas(*)").eq("turma_id", turmaId),
       ]);
       if (turma.error) throw turma.error;
@@ -224,7 +223,6 @@ function TurmaDetalhe() {
         faculdade: form.get("faculdade"),
         cidade: form.get("cidade") || undefined,
         semestre: form.get("semestre") || undefined,
-        previsao_formatura: form.get("previsao_formatura") || undefined,
         status: form.get("status") || "ativa",
       });
       const { error } = await supabase
@@ -235,7 +233,6 @@ function TurmaDetalhe() {
           faculdade: parsed.faculdade,
           cidade: parsed.cidade ?? null,
           semestre: parsed.semestre ?? null,
-          previsao_formatura: parsed.previsao_formatura || null,
           status: parsed.status ?? "ativa",
         })
         .eq("id", turmaId);
@@ -677,15 +674,6 @@ function TurmaDetalhe() {
                   <Label htmlFor="semestre">Semestre</Label>
                   <Input id="semestre" name="semestre" defaultValue={turma.semestre || ""} maxLength={20} />
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="previsao_formatura">Previsão de formatura</Label>
-                <Input
-                  id="previsao_formatura"
-                  name="previsao_formatura"
-                  type="date"
-                  defaultValue={turma.previsao_formatura || ""}
-                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="status">Status</Label>

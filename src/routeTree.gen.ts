@@ -14,6 +14,8 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedFinanceiroRouteImport } from './routes/_authenticated/financeiro'
+import { Route as AuthenticatedFluxoCaixaRouteImport } from './routes/_authenticated/fluxo-caixa'
+import { Route as AuthenticatedInativosRouteImport } from './routes/_authenticated/inativos'
 import { Route as AuthenticatedPainelRouteImport } from './routes/_authenticated/painel'
 import { Route as AdesaoTurmaIdRouteImport } from './routes/adesao.$turmaId'
 import { Route as AuthenticatedAlunosAlunoIdRouteImport } from './routes/_authenticated/alunos.$alunoId'
@@ -45,6 +47,16 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
 const AuthenticatedFinanceiroRoute = AuthenticatedFinanceiroRouteImport.update({
   id: '/financeiro',
   path: '/financeiro',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedFluxoCaixaRoute = AuthenticatedFluxoCaixaRouteImport.update({
+  id: '/fluxo-caixa',
+  path: '/fluxo-caixa',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedInativosRoute = AuthenticatedInativosRouteImport.update({
+  id: '/inativos',
+  path: '/inativos',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedPainelRoute = AuthenticatedPainelRouteImport.update({
@@ -99,6 +111,8 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/financeiro': typeof AuthenticatedFinanceiroRoute
+  '/fluxo-caixa': typeof AuthenticatedFluxoCaixaRoute
+  '/inativos': typeof AuthenticatedInativosRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/adesao/$turmaId': typeof AdesaoTurmaIdRoute
   '/alunos/$alunoId': typeof AuthenticatedAlunosAlunoIdRoute
@@ -113,6 +127,8 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/financeiro': typeof AuthenticatedFinanceiroRoute
+  '/fluxo-caixa': typeof AuthenticatedFluxoCaixaRoute
+  '/inativos': typeof AuthenticatedInativosRoute
   '/painel': typeof AuthenticatedPainelRoute
   '/adesao/$turmaId': typeof AdesaoTurmaIdRoute
   '/alunos/$alunoId': typeof AuthenticatedAlunosAlunoIdRoute
@@ -129,6 +145,8 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/financeiro': typeof AuthenticatedFinanceiroRoute
+  '/_authenticated/fluxo-caixa': typeof AuthenticatedFluxoCaixaRoute
+  '/_authenticated/inativos': typeof AuthenticatedInativosRoute
   '/_authenticated/painel': typeof AuthenticatedPainelRoute
   '/adesao/$turmaId': typeof AdesaoTurmaIdRoute
   '/_authenticated/alunos/$alunoId': typeof AuthenticatedAlunosAlunoIdRoute
@@ -145,6 +163,8 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/financeiro'
+    | '/fluxo-caixa'
+    | '/inativos'
     | '/painel'
     | '/adesao/$turmaId'
     | '/alunos/$alunoId'
@@ -159,6 +179,8 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/financeiro'
+    | '/fluxo-caixa'
+    | '/inativos'
     | '/painel'
     | '/adesao/$turmaId'
     | '/alunos/$alunoId'
@@ -174,6 +196,8 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/dashboard'
     | '/_authenticated/financeiro'
+    | '/_authenticated/fluxo-caixa'
+    | '/_authenticated/inativos'
     | '/_authenticated/painel'
     | '/adesao/$turmaId'
     | '/_authenticated/alunos/$alunoId'
@@ -226,6 +250,20 @@ declare module '@tanstack/react-router' {
       path: '/financeiro'
       fullPath: '/financeiro'
       preLoaderRoute: typeof AuthenticatedFinanceiroRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/fluxo-caixa': {
+      id: '/_authenticated/fluxo-caixa'
+      path: '/fluxo-caixa'
+      fullPath: '/fluxo-caixa'
+      preLoaderRoute: typeof AuthenticatedFluxoCaixaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/inativos': {
+      id: '/_authenticated/inativos'
+      path: '/inativos'
+      fullPath: '/inativos'
+      preLoaderRoute: typeof AuthenticatedInativosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/painel': {
@@ -290,6 +328,8 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedFinanceiroRoute: typeof AuthenticatedFinanceiroRoute
+  AuthenticatedFluxoCaixaRoute: typeof AuthenticatedFluxoCaixaRoute
+  AuthenticatedInativosRoute: typeof AuthenticatedInativosRoute
   AuthenticatedPainelRoute: typeof AuthenticatedPainelRoute
   AuthenticatedAlunosAlunoIdRoute: typeof AuthenticatedAlunosAlunoIdRoute
   AuthenticatedDemandasCasamentoRoute: typeof AuthenticatedDemandasCasamentoRoute
@@ -302,6 +342,8 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedFinanceiroRoute: AuthenticatedFinanceiroRoute,
+  AuthenticatedFluxoCaixaRoute: AuthenticatedFluxoCaixaRoute,
+  AuthenticatedInativosRoute: AuthenticatedInativosRoute,
   AuthenticatedPainelRoute: AuthenticatedPainelRoute,
   AuthenticatedAlunosAlunoIdRoute: AuthenticatedAlunosAlunoIdRoute,
   AuthenticatedDemandasCasamentoRoute: AuthenticatedDemandasCasamentoRoute,

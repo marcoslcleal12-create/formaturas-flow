@@ -82,6 +82,7 @@ function AuthPage() {
             .from("alunos")
             .select("id, nome_completo, cpf, turma_id")
             .eq("cpf", rawDigits)
+            .limit(1)
             .maybeSingle();
 
           if (alunoDb) {
