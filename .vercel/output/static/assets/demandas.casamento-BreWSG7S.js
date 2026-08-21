@@ -1,0 +1,1 @@
+import{r as e}from"./useRouter-P4PaR9MS.js";import{t}from"./DemandaManager-B2KDeId1.js";import{K as n}from"./index-DAsQYkXa.js";var r=e();function i(){return(0,r.jsx)(t,{tipo:`casamento`,titulo:`CASAMENTO`,subtitulo:`Gestão de noivos, cerimônias, recepções, contratos e parcelamentos com acesso por CPF.`,icon:n,themeColor:`pink`})}export{i as component};

@@ -67,7 +67,7 @@ const formDadosPessoaisSchema = z.object({
   nome_completo: z.string().trim().min(3, "Nome completo é obrigatório").max(120),
   cpf: z.string().trim().min(11, "CPF inválido").max(14, "CPF inválido"),
   rg: z.string().trim().max(20).optional(),
-  telefone: z.string().trim().min(8, "Telefone é obrigatório").max(20),
+  telefone: z.string().trim().max(20).optional(),
   whatsapp: z.string().trim().min(8, "WhatsApp é obrigatório").max(20),
   email: z.string().trim().email("E-mail inválido").max(255),
   endereco: z.string().trim().min(3, "Endereço é obrigatório").max(255),
@@ -395,7 +395,7 @@ Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="telefone">Telefone</Label>
-                    <span className="text-[11px] font-medium text-destructive/80">* Obrigatório</span>
+                    <span className="text-[11px] font-normal text-muted-foreground">Opcional</span>
                   </div>
                   <Input
                     id="telefone"

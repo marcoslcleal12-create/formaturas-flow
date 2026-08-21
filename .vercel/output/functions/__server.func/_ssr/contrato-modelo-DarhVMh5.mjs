@@ -1,0 +1,285 @@
+import { t as require_jspdf_node_min } from "../_libs/jspdf.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/contrato-modelo-DarhVMh5.js
+var import_jspdf_node_min = require_jspdf_node_min();
+var EMPRESA = {
+	nome: "JM Stúdio Fotográfico",
+	cnpj: "45.124.637/0001-28",
+	contato: "63 99206-0225 / @jm_studiofotografico / jmstudiofotograficoaraguaina@gmail.com",
+	responsavel: "Marconde Ramos Borges",
+	cidade: "Araguaína-TO"
+};
+var FORMAS_PAGAMENTO = [
+	{
+		id: "boleto",
+		label: "Boleto bancário"
+	},
+	{
+		id: "pix",
+		label: "Pix"
+	},
+	{
+		id: "cartao_credito",
+		label: "Cartão de Crédito"
+	},
+	{
+		id: "cartao_debito",
+		label: "Cartão de Débito"
+	},
+	{
+		id: "dinheiro",
+		label: "Dinheiro"
+	}
+];
+function formaPagamentoLabel(id) {
+	return FORMAS_PAGAMENTO.find((f) => f.id === id)?.label ?? "Boleto bancário";
+}
+var CLAUSULAS_PADRAO = `1. OBJETO
+O presente contrato tem como objeto a prestação de serviços de cobertura fotográfica com exclusividade nos eventos ou ensaios descritos pelo CONTRATANTE, incluindo captura, edição e entrega dos produtos contratados (digitais ou impressos).
+
+2. PAGAMENTO E INADIMPLÊNCIA
+2.1. O CONTRATANTE se compromete a efetuar o pagamento integral dos valores acordados, conforme prazos estabelecidos neste contrato.
+2.2. O não pagamento de qualquer parcela na data do vencimento implicará na incidência de multa de 2% sobre o valor da parcela, juros de 2% ao mês e correção monetária pelo índice oficial.
+2.3. A CONTRATADA poderá suspender a prestação de serviços e entrega de produtos até a quitação total do débito, sem prejuízo da cobrança judicial ou extrajudicial.
+2.4. Todas as despesas de cobrança, incluindo honorários advocatícios de até 20% do valor devido, serão de responsabilidade do CONTRATANTE.
+2.5. Pagamento à vista permite entrega imediata do produto após conclusão dos serviços, conforme prazos explícitos neste contrato.
+
+3. RESCISÃO E DESISTÊNCIA
+3.1. A desistência do CONTRATANTE não o exime do pagamento integral do contrato.
+3.2. Em caso de rescisão motivada pelo CONTRATANTE, será aplicada multa de 30% do valor total do contrato, acrescida de quaisquer valores investidos em produtos ou serviços já entregues.
+3.3. Se a rescisão ocorrer por descumprimento da CONTRATADA, esta devolverá apenas os valores pagos proporcionalmente aos serviços não executados.
+
+4. PRAZOS DE ENTREGA
+4.1. Disponibilização das fotos para seleção em até 25 dias após o evento, presencialmente ou via plataforma digital.
+4.2. Produtos digitais: prazo de entrega de 30 a 45 dias após a escolha das fotos.
+4.3. Produtos impressos ou encadernados: prazo máximo de 120 dias após aprovação da arte.
+4.4. Produtos que dependem de aprovação só serão produzidos após aprovação formal do CONTRATANTE.
+4.5. Correções ou reimpressões solicitadas após a entrega serão de responsabilidade financeira do CONTRATANTE.
+4.6. Arquivos digitais serão mantidos pela CONTRATADA por 90 dias após a criação.
+4.7. O CONTRATANTE deve finalizar a seleção das fotos em até 60 dias após o evento e aprovar a arte do álbum em até 50 dias após a conclusão da arte.
+4.8. Atrasos na escolha ou aprovação implicam na cobrança do valor vigente do produto.
+4.9. Produtos concluídos deverão ser retirados em até 30 dias, após o qual a CONTRATADA não se responsabiliza pelo armazenamento.
+
+5. SERVIÇOS ADICIONAIS E HORAS EXTRAS
+Acréscimo de horas na cobertura do evento será cobrado com 20% do valor da hora adicional previamente informado, mediante consulta e autorização prévia do CONTRATANTE.
+
+6. DIREITOS AUTORAIS E USO DE IMAGEM
+6.1. O CONTRATANTE não poderá alterar, reproduzir ou distribuir imagens sem autorização prévia da CONTRATADA.
+6.2. A CONTRATADA mantém a propriedade intelectual de todas as imagens, mesmo após a entrega dos produtos.
+
+7. RESPONSABILIDADE E FORÇA MAIOR
+7.1. A CONTRATADA não se responsabiliza por atrasos ou falhas decorrentes de força maior, incluindo condições climáticas, falhas elétricas, acidentes, pandemias ou atrasos de convidados.
+7.2. O CONTRATANTE é responsável por fornecer acesso e condições adequadas para a execução dos serviços.
+
+8. COBRANÇA JUDICIAL E EXTRAJUDICIAL
+8.1. Em caso de inadimplência, a CONTRATADA poderá protestar títulos, acionar cartórios e cobrar judicialmente o valor devido, acrescido de juros, multa e honorários advocatícios.
+8.2. A cobrança extrajudicial (notificações e cartas) será considerada tentativa prévia antes de ação judicial.
+
+9. RESPONSABILIDADE POR DANOS A EQUIPAMENTOS
+O CONTRATANTE se responsabiliza integralmente por qualquer dano, quebra ou avaria nos equipamentos e materiais utilizados pela CONTRATADA, incluindo câmeras, tripés, iluminação, cenários e acessórios, causados por convidados, crianças ou terceiros presentes no evento, comprometendo-se a reembolsar integralmente o valor de reparo ou substituição.
+
+10. FORO
+Fica eleito o foro da comarca de Araguaína-TO para dirimir quaisquer controvérsias oriundas deste contrato, com renúncia a qualquer outro, por mais privilegiado que seja.`;
+var money = (v) => v.toLocaleString("pt-BR", {
+	style: "currency",
+	currency: "BRL"
+});
+var dataBR = (iso) => (/* @__PURE__ */ new Date(`${iso}T12:00:00`)).toLocaleDateString("pt-BR");
+function gerarContratoPdf(input) {
+	const { aluno, contrato, parcelas, texto } = input;
+	const doc = new import_jspdf_node_min.jsPDF({
+		unit: "mm",
+		format: "a4"
+	});
+	const marginX = 16;
+	const largura = 178;
+	let y = 16;
+	const quebra = (altura = 6) => {
+		if (y + altura > 282) {
+			doc.addPage();
+			y = 16;
+		}
+	};
+	const linha = (txt, opts = {}) => {
+		const { size = 10, bold = false, align = "left", gap = 5 } = opts;
+		doc.setFont("helvetica", bold ? "bold" : "normal");
+		doc.setFontSize(size);
+		for (const parte of doc.splitTextToSize(txt, largura)) {
+			quebra(gap);
+			doc.text(parte, align === "center" ? 105 : marginX, y, { align });
+			y += gap;
+		}
+	};
+	linha("CONTRATO DE PRESTAÇÃO DE SERVIÇOS FOTOGRÁFICOS", {
+		size: 13,
+		bold: true,
+		align: "center",
+		gap: 6
+	});
+	linha("INSTRUMENTO PARTICULAR DE TRABALHO", {
+		size: 9,
+		align: "center"
+	});
+	linha(`${EMPRESA.nome} — CNPJ: ${EMPRESA.cnpj}`, {
+		size: 9,
+		align: "center"
+	});
+	linha(EMPRESA.contato, {
+		size: 8,
+		align: "center",
+		gap: 7
+	});
+	doc.setDrawColor(200);
+	quebra();
+	doc.line(marginX, y - 2, 194, y - 2);
+	y += 3;
+	if (aluno.turma_nome) linha(`TURMA: ${aluno.turma_nome.toUpperCase()}`, {
+		size: 11,
+		bold: true
+	});
+	linha("DADOS DO CONTRATANTE", {
+		size: 10,
+		bold: true
+	});
+	linha(`Nome: ${aluno.nome_completo}`);
+	linha(`CPF: ${aluno.cpf ?? "—"}          Contato: ${aluno.telefone ?? "—"}`);
+	linha(`Endereço: ${aluno.endereco ?? "—"}`);
+	linha(`Cidade: ${aluno.cidade ?? "—"}          E-mail: ${aluno.email ?? "—"}`, { gap: 7 });
+	linha(`PACOTE CONTRATADO: ${contrato.pacote}`, {
+		size: 10,
+		bold: true
+	});
+	const liquido = contrato.valor_total - contrato.desconto;
+	linha(`Investimento: ${money(contrato.valor_total)}${contrato.desconto > 0 ? ` (desconto de ${money(contrato.desconto)} — total a pagar ${money(liquido)})` : ""}`);
+	linha(`Forma de pagamento: ${formaPagamentoLabel(contrato.forma_pagamento)}`);
+	linha(`Dia de vencimento escolhido: ${String(contrato.dia_vencimento).padStart(2, "0")}`, { gap: 7 });
+	linha("PARCELAS", {
+		size: 10,
+		bold: true
+	});
+	doc.setFontSize(9);
+	for (const p of parcelas) {
+		quebra(5);
+		doc.setFont("helvetica", "normal");
+		const rotulo = p.numero === 0 ? "Entrada" : `Parcela ${p.numero}`;
+		const pago = p.status === "pago" ? `Pago${p.data_pagamento ? ` em ${dataBR(p.data_pagamento)}` : ""}${p.forma_pagamento ? ` via ${p.forma_pagamento}` : ""}` : "Em aberto";
+		doc.text(rotulo, marginX, y);
+		doc.text(dataBR(p.vencimento), 50, y);
+		doc.text(money(Number(p.valor)), 84, y);
+		doc.text(pago, 121, y);
+		y += 5;
+	}
+	y += 3;
+	linha("Autorização de uso de imagem:", {
+		size: 10,
+		bold: true
+	});
+	linha(contrato.autoriza_imagem ? "( X ) Sim, autorizo a JM Formaturas & Eventos a utilizar minhas imagens em portfólio, redes sociais e materiais publicitários." : "( X ) Não autorizo o uso das minhas imagens em portfólio, redes sociais e materiais publicitários.", {
+		size: 9,
+		gap: 6
+	});
+	linha("CLÁUSULAS", {
+		size: 10,
+		bold: true,
+		align: "center",
+		gap: 7
+	});
+	for (const paragrafo of texto.split("\n")) {
+		if (!paragrafo.trim()) {
+			y += 3;
+			continue;
+		}
+		linha(paragrafo, {
+			size: 9,
+			gap: 4.4
+		});
+	}
+	y += 14;
+	quebra(24);
+	doc.setFontSize(9);
+	doc.setFont("helvetica", "normal");
+	doc.text("CONTRATANTE: ______________________________________", marginX, y);
+	doc.text(`${EMPRESA.cidade}, ${dataBR(contrato.data_contrato)}`, 194, y, { align: "right" });
+	y += 8;
+	doc.text(`${aluno.nome_completo} — CPF ${aluno.cpf ?? "—"}`, marginX, y);
+	y += 10;
+	doc.text(`CONTRATADO: ${EMPRESA.cnpj} — ${EMPRESA.responsavel}`, marginX, y);
+	const arquivo = `contrato-${aluno.nome_completo.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
+	doc.save(arquivo);
+}
+function gerarBoletoPdf(input) {
+	const { clienteNome, clienteCpf, numeroParcela, valor, vencimento, pacote } = input;
+	const doc = new import_jspdf_node_min.jsPDF({
+		unit: "mm",
+		format: "a4"
+	});
+	const marginX = 14;
+	let y = 18;
+	doc.setFont("helvetica", "bold");
+	doc.setFontSize(14);
+	doc.text("BOLETO DE COBRANÇA BANCÁRIA", marginX, y);
+	y += 6;
+	doc.setFont("helvetica", "normal");
+	doc.setFontSize(9);
+	doc.text(`${EMPRESA.nome} — CNPJ: ${EMPRESA.cnpj}`, marginX, y);
+	y += 8;
+	const linhaDigitavel = `34191.79001 01043.510047 91020.150008 1 ${Math.abs(Math.sin((numeroParcela + 1) * 1e3 + valor)).toString().slice(2, 10)}0000${Math.round(valor * 100)}`;
+	doc.setFillColor(240, 240, 245);
+	doc.rect(marginX, y, 182, 10, "F");
+	doc.setFont("courier", "bold");
+	doc.setFontSize(11);
+	doc.text(linhaDigitavel, 18, y + 6.5);
+	y += 14;
+	doc.setDrawColor(180, 180, 180);
+	doc.rect(marginX, y, 120, 12);
+	doc.rect(134, y, 62, 12);
+	doc.setFont("helvetica", "normal");
+	doc.setFontSize(8);
+	doc.text("Beneficiário / Cedente", 16, y + 4);
+	doc.text("Vencimento", 136, y + 4);
+	doc.setFont("helvetica", "bold");
+	doc.setFontSize(9);
+	doc.text(`${EMPRESA.nome} (CNPJ: ${EMPRESA.cnpj})`, 16, y + 9);
+	doc.text((/* @__PURE__ */ new Date(`${vencimento}T12:00:00`)).toLocaleDateString("pt-BR"), 136, y + 9);
+	y += 12;
+	doc.rect(marginX, y, 120, 12);
+	doc.rect(134, y, 62, 12);
+	doc.setFont("helvetica", "normal");
+	doc.setFontSize(8);
+	doc.text("Pagador / Sacado", 16, y + 4);
+	doc.text("Valor do Documento", 136, y + 4);
+	doc.setFont("helvetica", "bold");
+	doc.setFontSize(9);
+	doc.text(`${clienteNome} - CPF: ${clienteCpf || "—"}`, 16, y + 9);
+	doc.text(valor.toLocaleString("pt-BR", {
+		style: "currency",
+		currency: "BRL"
+	}), 136, y + 9);
+	y += 12;
+	doc.rect(marginX, y, 182, 12);
+	doc.setFont("helvetica", "normal");
+	doc.setFontSize(8);
+	doc.text("Demonstrativo / Referência", 16, y + 4);
+	doc.setFont("helvetica", "bold");
+	doc.setFontSize(9);
+	doc.text(`Parcela nº ${numeroParcela === 0 ? "Entrada" : numeroParcela} referente a: ${pacote || "Contrato de Serviços Fotográficos"}`, 16, y + 9);
+	y += 12;
+	doc.rect(marginX, y, 182, 28);
+	doc.setFont("helvetica", "normal");
+	doc.setFontSize(8);
+	doc.text("Instruções de Pagamento:", 16, y + 4);
+	doc.text("- Pagável em qualquer agência bancária, internet banking ou casas lotéricas até o vencimento.", 18, y + 10);
+	doc.text("- Após o vencimento, cobrar multa de 2% e juros de 1% ao mês conforme contrato.", 18, y + 15);
+	doc.text("- Central de atendimento JM: " + EMPRESA.contato, 18, y + 20);
+	doc.text("- Não receber após 30 dias do vencimento sem autorização do beneficiário.", 18, y + 25);
+	y += 34;
+	doc.setFont("courier", "bold");
+	doc.setFontSize(16);
+	doc.text("||| || ||||| | |||| |||| || | |||| ||||| || ||| ||||", 34, y + 8);
+	doc.setFont("helvetica", "normal");
+	doc.setFontSize(8);
+	doc.text("Autenticação Mecânica / Ficha de Compensação", marginX, y + 16);
+	const cleanName = clienteNome.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+	doc.save(`boleto-parcela-${numeroParcela}-${cleanName}.pdf`);
+}
+//#endregion
+export { gerarContratoPdf as a, gerarBoletoPdf as i, EMPRESA as n, FORMAS_PAGAMENTO as r, CLAUSULAS_PADRAO as t };

@@ -13,6 +13,7 @@ import {
   ChevronDown,
   UserX,
   ArrowLeftRight,
+  UserCheck,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -210,6 +211,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                           <Link to="/fluxo-caixa" className="flex items-center gap-2.5 font-medium tracking-wide">
                             <ArrowLeftRight className="size-4 text-emerald-500" />
                             <span>FLUXO DE CAIXA</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={currentPath.startsWith("/colaboradores")}
+                          tooltip="COLABORADORES"
+                        >
+                          <Link to="/colaboradores" className="flex items-center gap-2.5 font-medium tracking-wide">
+                            <UserCheck className="size-4 text-blue-500" />
+                            <span>COLABORADORES</span>
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
