@@ -103,6 +103,7 @@ function AgendaPage() {
   const salvar = useMutation({
     mutationFn: async (f: FormState) => {
       const payload = {
+        titulo: f.descricao.trim(),        // NOT NULL na tabela original
         descricao: f.descricao.trim(),
         empresa_tipo: f.empresa_tipo,
         empresa_nome: f.empresa_tipo === "jm" ? "JM Formaturas & Eventos" : f.empresa_nome.trim(),
