@@ -275,8 +275,8 @@ function AgendaPage() {
           {/* calendário */}
           <div className="mb-8 overflow-hidden rounded-xl border bg-card shadow-sm">
             {/* header dias da semana */}
-            <div className="grid grid-cols-7 border-b bg-muted/40 text-center text-xs font-semibold uppercase tracking-wide">
-              {DIAS_SEM.map(d => <div key={d} className="py-2">{d}</div>)}
+            <div className="grid grid-cols-7 border-b bg-muted/40 text-center text-sm font-bold uppercase tracking-wide">
+              {DIAS_SEM.map(d => <div key={d} className="py-3">{d}</div>)}
             </div>
             {/* grid */}
             <div className="grid grid-cols-7 divide-x divide-y divide-border">
@@ -286,34 +286,63 @@ function AgendaPage() {
                 return (
                   <div
                     key={idx}
-                    className={`group relative min-h-[100px] p-1.5 transition-colors ${cell.outroMes ? "opacity-30" : "hover:bg-muted/20"} ${isHoje ? "bg-gold/10" : ""}`}
+                    className={`group relative flex flex-col min-h-[160px] p-2 transition-colors ${cell.outroMes ? "opacity-30" : "hover:bg-muted/20"} ${isHoje ? "bg-gold/10" : ""}`}
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className={`flex size-6 items-center justify-center rounded-full text-xs ${isHoje ? "bg-gold font-bold text-white dark:text-brand" : "text-muted-foreground"}`}>
+                    {/* número do dia + botão adicionar */}
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`flex size-7 items-center justify-center rounded-full text-sm font-bold ${isHoje ? "bg-gold text-white dark:text-brand" : "text-muted-foreground"}`}>
                         {cell.dia}
                       </span>
                       {!cell.outroMes && (
                         <button
                           onClick={() => abrirNovo(cell.data)}
-                          className="hidden group-hover:flex size-5 items-center justify-center rounded hover:bg-muted"
+                          className="hidden group-hover:flex size-6 items-center justify-center rounded-full bg-muted hover:bg-muted-foreground/20"
                           title="Adicionar evento"
                         >
-                          <Plus className="size-3" />
+                          <Plus className="size-3.5" />
                         </button>
                       )}
                     </div>
-                    <div className="space-y-1">
+
+                    {/* eventos */}
+                    <div className="flex flex-col gap-1.5 flex-1">
                       {evs.map(ev => (
                         <button
                           key={ev.id}
                           onClick={() => abrirEditar(ev)}
-                          className={`w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium leading-tight shadow-sm transition hover:scale-[1.02] ${
+                          className={`w-full rounded-lg px-2 py-1.5 text-left shadow-sm transition hover:brightness-95 active:scale-[0.98] ${
                             ev.empresa_tipo === "jm"
-                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
-                              : "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300"
+                              ? "bg-emerald-100 dark:bg-emerald-900/50"
+                              : "bg-purple-100 dark:bg-purple-900/50"
                           }`}
                         >
-                          <span className="mr-1">📷</span>{ev.descricao}
+                          {/* fotógrafo em destaque */}
+                          <div className={`flex items-center gap-1 font-bold text-xs leading-tight mb-0.5 ${
+                            ev.empresa_tipo === "jm"
+                              ? "text-emerald-800 dark:text-emerald-200"
+                              : "text-purple-800 dark:text-purple-200"
+                          }`}>
+                            <Camera className="size-3 shrink-0" />
+                            <span className="truncate">{ev.fotografo || "—"}</span>
+                          </div>
+                          {/* descrição */}
+                          <div className={`truncate text-[11px] font-semibold leading-tight ${
+                            ev.empresa_tipo === "jm"
+                              ? "text-emerald-700 dark:text-emerald-300"
+                              : "text-purple-700 dark:text-purple-300"
+                          }`}>
+                            {ev.descricao || ev.titulo}
+                          </div>
+                          {/* local */}
+                          {ev.cidade && (
+                            <div className={`truncate text-[10px] leading-tight mt-0.5 ${
+                              ev.empresa_tipo === "jm"
+                                ? "text-emerald-600/80 dark:text-emerald-400/80"
+                                : "text-purple-600/80 dark:text-purple-400/80"
+                            }`}>
+                              📍 {ev.cidade}
+                            </div>
+                          )}
                         </button>
                       ))}
                     </div>
