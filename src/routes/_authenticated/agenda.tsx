@@ -90,6 +90,14 @@ const MESES = [
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
+function formatLocalYMD(year: number, monthIndex: number, day: number): string {
+  const d = new Date(year, monthIndex, day);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
 export function AgendaPage() {
   const queryClient = useQueryClient();
   const hoje = new Date();
@@ -111,17 +119,20 @@ export function AgendaPage() {
   const { data: eventos = [], isLoading } = useQuery({
     queryKey: ["agenda-eventos"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("agenda_eventos")
-        .select("*")
-        .order("data_evento", { ascending: true });
+      try {
+        const { data, error } = await (supabase.from as any)("agenda_eventos")
+          .select("*")
+          .order("data_evento", { ascending: true });
 
-      if (error) {
-        // Se a tabela ainda nao existir no schema remoto, retorna array vazio graciosamente
-        console.warn("Tabela agenda_eventos ainda não configurada no DB remoto:", error.message);
+        if (error) {
+          console.warn("Tabela agenda_eventos ainda não configurada no DB remoto:", error.message);
+          return [];
+        }
+        return (data ?? []) as AgendaEvento[];
+      } catch (err) {
+        console.warn("Exceção ao buscar agenda_eventos:", err);
         return [];
       }
-      return (data ?? []) as AgendaEvento[];
     },
   });
 
@@ -252,7 +263,7 @@ export function AgendaPage() {
     // Preencher dias do mês anterior para completar a primeira semana
     const diaMesAnterior = new Date(ano, mes, 0).getDate();
     for (let i = diaSemanaInicio - 1; i >= 0; i--) {
-      const dataStr = new Date(ano, mes - 1, diaMesAnterior - i).toISOString().slice(0, 10);
+      const dataStr = formatLocalYMD(ano, mes - 1, diaMesAnterior - i);
       dias.push({
         dia: diaMesAnterior - i,
         outroMes: true,
@@ -262,9 +273,7 @@ export function AgendaPage() {
 
     // Dias do mês atual
     for (let d = 1; d <= ultimoDiaMes; d++) {
-      const mm = String(mes + 1).padStart(2, "0");
-      const dd = String(d).padStart(2, "0");
-      const dataStr = `${ano}-${mm}-${dd}`;
+      const dataStr = formatLocalYMD(ano, mes, d);
       dias.push({
         dia: d,
         outroMes: false,
@@ -276,7 +285,7 @@ export function AgendaPage() {
     const slotsTotais = dias.length > 35 ? 42 : 35;
     const faltam = slotsTotais - dias.length;
     for (let i = 1; i <= faltam; i++) {
-      const dataStr = new Date(ano, mes + 1, i).toISOString().slice(0, 10);
+      const dataStr = formatLocalYMD(ano, mes + 1, i);
       dias.push({
         dia: i,
         outroMes: true,

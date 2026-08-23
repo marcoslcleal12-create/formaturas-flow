@@ -88,7 +88,10 @@ export function useAuth() {
     };
   }, []);
 
-  const isStaff = roles.includes("super_admin") || roles.includes("funcionario");
+  // Se o usuário possui sessão no Supabase Auth (equipe/admin), considera isStaff se roles não for restrita a apenas aluno
+  const isStaff = session?.user
+    ? roles.length === 0 || roles.includes("super_admin") || roles.includes("funcionario")
+    : false;
 
   return {
     session,
