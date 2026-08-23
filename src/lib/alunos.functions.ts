@@ -8,7 +8,7 @@ const schema = z.object({ alunoId: z.string().uuid() });
 /** Cria o usuário de acesso do formando: login = CPF, senha = CPF. */
 export const criarAcessoFormando = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { alunoId: string }) => schema.parse(input))
+  .validator((input: { alunoId: string }) => schema.parse(input))
   .handler(async ({ data, context }) => {
     const { data: isStaff } = await context.supabase.rpc("is_staff", { _user_id: context.userId });
     if (!isStaff) throw new Error("Apenas a equipe pode criar acessos.");
@@ -58,7 +58,7 @@ const publicSchema = z.object({ alunoId: z.string().uuid(), cpf: z.string().min(
 
 /** Cria o acesso do formando a partir do portal de adesão pública. */
 export const criarAcessoPublicoFormando = createServerFn({ method: "POST" })
-  .inputValidator((input: { alunoId: string; cpf: string }) => publicSchema.parse(input))
+  .validator((input: { alunoId: string; cpf: string }) => publicSchema.parse(input))
   .handler(async ({ data }) => {
     const cpf = apenasDigitos(data.cpf);
     if (cpf.length !== 11) throw new Error("CPF inválido.");
@@ -147,7 +147,7 @@ const adesaoSchema = z.object({
 
 /** Realiza toda a adesão do aluno na retaguarda (bypassing RLS), inclusive gerando login automático. */
 export const realizarAdesaoPublica = createServerFn({ method: "POST" })
-  .inputValidator((input: any) => adesaoSchema.parse(input))
+  .validator((input: any) => adesaoSchema.parse(input))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 

@@ -39,9 +39,9 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    // Verifica se já existe sessão ativa do Supabase Auth (Admin)
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) void navigate({ to: "/agenda" });
+    // Verifica se existe usuário autenticado válido no Supabase (Admin)
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user) void navigate({ to: "/agenda" });
     });
     const clientSession = getClienteSession();
     if (clientSession?.cpf) {

@@ -99,7 +99,7 @@ function formatLocalYMD(year: number, monthIndex: number, day: number): string {
   return `${y}-${m}-${dd}`;
 }
 
-export function AgendaPage() {
+function AgendaPage() {
   const queryClient = useQueryClient();
   const hoje = new Date();
   

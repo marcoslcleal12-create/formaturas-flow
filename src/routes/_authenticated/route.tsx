@@ -5,10 +5,10 @@ import { getClienteSession } from "@/lib/aluno-login";
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
-    // 1. Verifica sessão do Supabase (Equipe, Admin ou Formando registrado no Supabase Auth)
-    const { data } = await supabase.auth.getUser();
-    if (data?.user) {
-      return { user: data.user };
+    // 1. Verifica sessão ativa no Supabase Auth (Admin/Equipe)
+    const { data } = await supabase.auth.getSession();
+    if (data?.session?.user) {
+      return { user: data.session.user };
     }
 
     // 2. Verifica sessão do cliente logado via CPF (Formando ou Demanda)

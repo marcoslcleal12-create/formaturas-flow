@@ -145,7 +145,7 @@ interface MovimentacaoCaixa {
   rawDespesaId?: string;
 }
 
-export function FluxoCaixaPage() {
+function FluxoCaixaPage() {
   const queryClient = useQueryClient();
   const hoje = new Date().toISOString().slice(0, 10);
   const anoAtual = new Date().getFullYear().toString();

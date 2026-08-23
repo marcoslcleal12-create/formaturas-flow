@@ -36,7 +36,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
 });
 
-export function DashboardPage() {
+function DashboardPage() {
   const [demandas, setDemandas] = useState<DemandaItem[]>([]);
   const hoje = new Date().toISOString().slice(0, 10);
 
