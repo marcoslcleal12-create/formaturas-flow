@@ -1,1 +1,0 @@
-import{r as e}from"./useRouter-P4PaR9MS.js";import{t}from"./DemandaManager-B2KDeId1.js";import{Z as n}from"./index-DAsQYkXa.js";var r=e();function i(){return(0,r.jsx)(t,{tipo:`ensaio`,titulo:`ENSAIO FOTOGRÁFICO`,subtitulo:`Gestão de ensaios pré-wedding, gestante, corporativos e individuais com acesso por CPF.`,icon:n,themeColor:`blue`})}export{i as component};

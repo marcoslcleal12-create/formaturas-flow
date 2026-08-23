@@ -74,8 +74,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { loadDemandas, type DemandaItem } from "@/lib/demandas-store";
-
 export const Route = createFileRoute("/_authenticated/fluxo-caixa")({
   head: () => ({
     meta: [
@@ -166,11 +164,7 @@ export function FluxoCaixaPage() {
   const [editingDespesa, setEditingDespesa] = useState<any | null>(null);
   const [deletingDespesa, setDeletingDespesa] = useState<any | null>(null);
 
-  // Demandas offline/localStorage
-  const [demandas, setDemandas] = useState<DemandaItem[]>([]);
-  useEffect(() => {
-    setDemandas(loadDemandas());
-  }, []);
+
 
   // Buscar dados consolidados do Supabase
   const { data, isLoading } = useQuery({
@@ -324,52 +318,6 @@ export function FluxoCaixaPage() {
       }
     }
 
-    // 2. Entradas de Demandas (Casamentos, Aniversários, Ensaios)
-    for (const d of demandas) {
-      const tipoLabel =
-        d.tipo === "casamento"
-          ? "Casamento"
-          : d.tipo === "festa-aniversario"
-          ? "Festa de Aniversário"
-          : "Ensaio Fotográfico";
-
-      // Valor de entrada da demanda
-      if (Number(d.valorEntrada) > 0) {
-        const dataEntrada = d.createdAt ? d.createdAt.slice(0, 10) : hoje;
-        list.push({
-          id: `entrada-demanda-${d.id}`,
-          tipo: "entrada",
-          data: dataEntrada,
-          descricao: `Entrada de Contrato - ${d.cliente}`,
-          justificativa: `Entrada do evento: ${tipoLabel} (${d.pacote})`,
-          categoria: `${tipoLabel} (Entrada)`,
-          origem: `${tipoLabel}: ${d.cliente}`,
-          valor: Number(d.valorEntrada),
-          forma_pagamento: d.formaPagamento || "Pix",
-          status: "pago",
-        });
-      }
-
-      // Parcelas pagas da demanda
-      for (const p of d.parcelas ?? []) {
-        if (p.status === "pago") {
-          const dataPagto = p.dataPagamento || p.vencimento || hoje;
-          list.push({
-            id: `parcela-demanda-${d.id}-${p.numero}`,
-            tipo: "entrada",
-            data: dataPagto,
-            descricao: `Parcela #${p.numero} - ${d.cliente}`,
-            justificativa: `Pagamento de parcela: ${tipoLabel} (${d.pacote})`,
-            categoria: `${tipoLabel} (Parcela)`,
-            origem: `${tipoLabel}: ${d.cliente}`,
-            valor: Number(p.valor),
-            forma_pagamento: d.formaPagamento || "Pix",
-            status: "pago",
-          });
-        }
-      }
-    }
-
     // 3. Saídas / Despesas Lançadas
     for (const d of despesas) {
       const dataPagto = d.data_pagamento || d.vencimento || hoje;
@@ -390,7 +338,7 @@ export function FluxoCaixaPage() {
 
     // Ordenar decrescente por data
     return list.sort((a, b) => b.data.localeCompare(a.data));
-  }, [contratos, demandas, despesas, hoje]);
+  }, [contratos, despesas, hoje]);
 
   // FILTRAGEM POR PERÍODO (DIA, MÊS, ANO OU TODOS)
   const movimentacoesFiltradas = useMemo(() => {

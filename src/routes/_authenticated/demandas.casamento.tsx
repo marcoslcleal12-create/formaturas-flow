@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Heart } from "lucide-react";
-import { DemandaManager } from "@/components/app/DemandaManager";
+import { DemandaEventManager } from "@/components/app/DemandaEventManager";
 
 export const Route = createFileRoute("/_authenticated/demandas/casamento")({
   head: () => ({
     meta: [
       { title: "Demandas: Casamentos | JM Formaturas" },
-      { name: "description", content: "Gestão de demandas de casamentos com contratos, parcelas e login por CPF." },
+      { name: "description", content: "Gestão de eventos de casamentos com contratos, parcelas e link de adesão." },
       { property: "og:title", content: "Demandas: Casamentos | JM Formaturas" },
       { property: "og:description", content: "Gestão de ensaios, cerimônias e festas de casamentos contratadas." },
     ],
@@ -16,12 +16,13 @@ export const Route = createFileRoute("/_authenticated/demandas/casamento")({
 
 function CasamentosPage() {
   return (
-    <DemandaManager
+    <DemandaEventManager
       tipo="casamento"
       titulo="CASAMENTO"
-      subtitulo="Gestão de noivos, cerimônias, recepções, contratos e parcelamentos com acesso por CPF."
+      subtitulo="Cadastre eventos de casamento, gerencie pacotes, gere links de adesão e acompanhe contratos e parcelas."
       icon={Heart}
       themeColor="pink"
     />
   );
 }
+

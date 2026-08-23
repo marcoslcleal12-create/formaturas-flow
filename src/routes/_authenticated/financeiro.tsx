@@ -176,57 +176,6 @@ function FinanceiroPage() {
       });
     });
 
-    // Demandas parcelas (Casamentos, Aniversários, Ensaios)
-    demandas.forEach((d) => {
-      const linkMap = {
-        casamento: "/demandas/casamento",
-        "festa-aniversario": "/demandas/festa-aniversario",
-        ensaio: "/demandas/ensaio",
-      };
-
-      // Entrada como Parcela 0
-      if (d.valorEntrada > 0) {
-        list.push({
-          id: `dem-ent-${d.id}`,
-          origem: d.tipo,
-          demandaId: d.id,
-          clienteNome: d.cliente,
-          clienteContato: d.whatsapp ?? formatarCpf(d.cpf),
-          tituloEvento: `${d.tipo.toUpperCase()} · ${d.local}`,
-          pacote: d.pacote,
-          numeroParcela: 0,
-          valor: d.valorEntrada,
-          valorPago: d.valorEntrada,
-          vencimento: d.dataEvento,
-          dataPagamento: d.dataEvento,
-          status: "pago",
-          linkUrl: linkMap[d.tipo],
-        });
-      }
-
-      // Parcelas da demanda
-      d.parcelas.forEach((p) => {
-        const isPago = p.status === "pago";
-        const isAtrasado = !isPago && p.vencimento < hoje;
-        list.push({
-          id: `dem-parc-${d.id}-${p.numero}`,
-          origem: d.tipo,
-          demandaId: d.id,
-          clienteNome: d.cliente,
-          clienteContato: d.whatsapp ?? formatarCpf(d.cpf),
-          tituloEvento: `${d.tipo.toUpperCase()} · ${d.local}`,
-          pacote: d.pacote,
-          numeroParcela: p.numero,
-          valor: p.valor,
-          valorPago: isPago ? p.valor : 0,
-          vencimento: p.vencimento,
-          dataPagamento: p.dataPagamento ?? null,
-          status: isPago ? "pago" : isAtrasado ? "atrasado" : "pendente",
-          linkUrl: linkMap[d.tipo],
-        });
-      });
-    });
-
     return list;
   }, [parcelasTurmas, demandas, hoje]);
 

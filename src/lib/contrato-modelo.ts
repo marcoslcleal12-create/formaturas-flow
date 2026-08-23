@@ -90,6 +90,7 @@ export type ContratoPdfInput = {
     email: string | null;
     turma_nome?: string | null;
   };
+  tipoEvento?: "casamento" | "festa-aniversario" | "ensaio" | "formatura";
   contrato: {
     pacote: string;
     valor_total: number;
@@ -143,7 +144,8 @@ export function gerarContratoPdf(input: ContratoPdfInput) {
   y += 3;
 
   if (aluno.turma_nome) {
-    linha(`TURMA: ${aluno.turma_nome.toUpperCase()}`, { size: 11, bold: true });
+    const headerTitle = input.tipoEvento === "ensaio" ? "ENSAIO" : "TURMA";
+    linha(`${headerTitle}: ${aluno.turma_nome.toUpperCase()}`, { size: 11, bold: true });
   }
   linha("DADOS DO CONTRATANTE", { size: 10, bold: true });
   linha(`Nome: ${aluno.nome_completo}`);

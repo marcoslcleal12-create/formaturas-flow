@@ -37,6 +37,108 @@ export const PACOTES_PADRAO: PacoteItem[] = [
   },
 ];
 
+export const PACOTES_CASAMENTO: PacoteItem[] = [
+  {
+    id: "cas-1",
+    nome: "1º PACOTE - COBERTURA FOTOGRÁFICA (CERIMÔNIA + RECEPÇÃO)",
+    material: "Cobertura fotográfica completa, fotos tratadas em alta resolução entregues via link em galeria exclusiva.",
+    investimento: 4500.0,
+    ativo: true,
+  },
+  {
+    id: "cas-2",
+    nome: "2º PACOTE - FOTO + FILME CINEMATIC + REELS",
+    material: "Fotografia + Vídeo cinematográfico com teaser para redes sociais e documentário completo em 4K.",
+    investimento: 7900.0,
+    ativo: true,
+  },
+  {
+    id: "cas-3",
+    nome: "3º PACOTE - COBERTURA COMPLETA + ÁLBUM LUXO + MAKING OF",
+    material: "Foto + Filme + Making of dos noivos + 1 Álbum panorâmico luxo 30x30 com 80 fotos em estojo personalizado.",
+    investimento: 11800.0,
+    ativo: true,
+  },
+  {
+    id: "cas-4",
+    nome: "4º PACOTE - PREMIUM ALL-INCLUSIVE (DRONE + 2 ÁLBUNS + CABINE)",
+    material: "2 Fotógrafos + 2 Cinegrafistas + Drone + 2 Álbuns (Noivos e Pais) + Cabine fotográfica com impressão ilimitada.",
+    investimento: 15500.0,
+    ativo: true,
+  },
+];
+
+export const PACOTES_ANIVERSARIO: PacoteItem[] = [
+  {
+    id: "ani-1",
+    nome: "1º PACOTE - COBERTURA FOTOGRÁFICA (4 HORAS)",
+    material: "Todas as fotos da recepção, parabéns e convidados tratadas em alta resolução via link.",
+    investimento: 1900.0,
+    ativo: true,
+  },
+  {
+    id: "ani-2",
+    nome: "2º PACOTE - FOTO + VÍDEO HIGHLIGHTS",
+    material: "Fotografia completa + Vídeo com melhores momentos da festa e teaser dinâmico.",
+    investimento: 3800.0,
+    ativo: true,
+  },
+  {
+    id: "ani-3",
+    nome: "3º PACOTE - DEBUTANTE 15 ANOS VIP (FOTO + VÍDEO + ENSAIO + ÁLBUM)",
+    material: "Ensaio pré-festa + Cobertura completa de foto e vídeo + Álbum encadernado 20x30 com 50 fotos.",
+    investimento: 5900.0,
+    ativo: true,
+  },
+  {
+    id: "ani-4",
+    nome: "4º PACOTE - FESTA COMPLETA + CABINE DE FOTOS",
+    material: "Foto + Vídeo + Cabine de Fotos interativa para os convidados + Livro de assinaturas personalizado.",
+    investimento: 7400.0,
+    ativo: true,
+  },
+];
+
+export const PACOTES_ENSAIO: PacoteItem[] = [
+  {
+    id: "ens-1",
+    nome: "1º PACOTE - ENSAIO ESSENTIAL (1 HORA)",
+    material: "1 hora de sessão fotográfica, 20 fotos tratadas em alta resolução enviadas via galeria digital.",
+    investimento: 650.0,
+    ativo: true,
+  },
+  {
+    id: "ens-2",
+    nome: "2º PACOTE - ENSAIO GOLD (2 HORAS)",
+    material: "2 horas de sessão externa ou estúdio, até 3 trocas de look, 40 fotos tratadas em alta resolução.",
+    investimento: 1200.0,
+    ativo: true,
+  },
+  {
+    id: "ens-3",
+    nome: "3º PACOTE - ENSAIO PREMIUM + FOTOLIVRO 20X20",
+    material: "3 horas de sessão, todas as fotos digitais da sessão entregues tratadas + 1 Fotolivro 20x20 capa dura.",
+    investimento: 1850.0,
+    ativo: true,
+  },
+  {
+    id: "ens-4",
+    nome: "4º PACOTE - PRÉ-WEDDING / GESTANTE EXCLUSIVO + QUADRO 50X70",
+    material: "Sessão fotográfica completa + Teaser de vídeo cinematic + Quadro fotográfico 50x70 com moldura.",
+    investimento: 2400.0,
+    ativo: true,
+  },
+];
+
+export function obterPacotesPadraoPorTipo(tipo?: string | null): PacoteItem[] {
+  if (!tipo) return PACOTES_PADRAO;
+  const t = tipo.toLowerCase();
+  if (t.includes("casamento")) return PACOTES_CASAMENTO;
+  if (t.includes("aniversario") || t.includes("aniversário") || t.includes("festa")) return PACOTES_ANIVERSARIO;
+  if (t.includes("ensaio")) return PACOTES_ENSAIO;
+  return PACOTES_PADRAO;
+}
+
 export const DIAS_VENCIMENTO = [5, 10, 15, 20, 25, 30] as const;
 
 export interface ParcelaCalculada {
@@ -103,10 +205,13 @@ export function calcularParcelas(
 }
 
 /**
- * Extrai a lista de pacotes configurados para uma turma (ou retorna os pacotes padrão se nenhum estiver gravado)
+ * Extrai a lista de pacotes configurados para uma turma/evento (ou retorna os pacotes padrão se nenhum estiver gravado)
  */
-export function extrairPacotesTurma(observacoes: string | null | undefined): PacoteItem[] {
-  if (!observacoes) return PACOTES_PADRAO;
+export function extrairPacotesTurma(
+  observacoes: string | null | undefined,
+  tipoFallback?: string | null
+): PacoteItem[] {
+  if (!observacoes) return obterPacotesPadraoPorTipo(tipoFallback);
   try {
     const parsed = JSON.parse(observacoes);
     if (parsed && Array.isArray(parsed.pacotes) && parsed.pacotes.length > 0) {
@@ -115,7 +220,7 @@ export function extrairPacotesTurma(observacoes: string | null | undefined): Pac
   } catch {
     // Não é JSON ou são observações de texto livre
   }
-  return PACOTES_PADRAO;
+  return obterPacotesPadraoPorTipo(tipoFallback);
 }
 
 /**
@@ -125,18 +230,21 @@ export function serializarPacotesTurma(
   observacoesAtuais: string | null | undefined,
   novosPacotes: PacoteItem[]
 ): string {
-  let textoExtra = "";
+  let obj: any = {};
   try {
-    const parsed = JSON.parse(observacoesAtuais || "{}");
-    if (parsed && typeof parsed.notas === "string") {
-      textoExtra = parsed.notas;
+    if (observacoesAtuais) {
+      const parsed = JSON.parse(observacoesAtuais);
+      if (typeof parsed === "object" && parsed !== null) {
+        obj = { ...parsed };
+      } else {
+        obj.notas = observacoesAtuais;
+      }
     }
   } catch {
-    textoExtra = observacoesAtuais || "";
+    obj.notas = observacoesAtuais || "";
   }
 
-  return JSON.stringify({
-    pacotes: novosPacotes,
-    notas: textoExtra,
-  });
+  obj.pacotes = novosPacotes;
+
+  return JSON.stringify(obj);
 }

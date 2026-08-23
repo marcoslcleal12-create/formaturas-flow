@@ -123,7 +123,42 @@ function AdesaoTurmaPage() {
     initialData: loaderData?.turma || undefined,
   });
 
-  const todosPacotes = extrairPacotesTurma(turma?.observacoes);
+  const cursoLower = (turma?.curso || "").toLowerCase();
+  const obsLower = (turma?.observacoes || "").toLowerCase();
+  const isCasamento = cursoLower.includes("casamento") || obsLower.includes("casamento");
+  const isAniversario =
+    cursoLower.includes("aniversario") ||
+    cursoLower.includes("aniversário") ||
+    cursoLower.includes("festa") ||
+    obsLower.includes("festa") ||
+    obsLower.includes("aniversario");
+  const isEnsaio = cursoLower.includes("ensaio") || obsLower.includes("ensaio");
+
+  const tipoEventoNome = isCasamento
+    ? "Casamento"
+    : isAniversario
+    ? "Festa de Aniversário / 15 Anos"
+    : isEnsaio
+    ? "Ensaio Fotográfico"
+    : "Formatura";
+
+  const tipoEventoBadge = isCasamento
+    ? "Adesão de Casamento"
+    : isAniversario
+    ? "Adesão - Festa de Aniversário"
+    : isEnsaio
+    ? "Adesão de Ensaio Fotográfico"
+    : "Adesão de Formatura";
+
+  const contratanteLabel = isCasamento
+    ? "Contratante / Noivos"
+    : isAniversario
+    ? "Contratante / Aniversariante"
+    : isEnsaio
+    ? "Contratante"
+    : "Formando";
+
+  const todosPacotes = extrairPacotesTurma(turma?.observacoes, turma?.curso);
   const pacotesAtivos = todosPacotes.filter((p) => p.ativo !== false);
 
   // Se nenhum pacote selecionado, define o primeiro ativo
@@ -136,7 +171,7 @@ function AdesaoTurmaPage() {
   // Submissão do cadastro final
   const finalizarAdesao = useMutation({
     mutationFn: async () => {
-      if (!turma) throw new Error("Turma não encontrada");
+      if (!turma) throw new Error("Evento/Turma não encontrado");
       if (!pacoteSelecionado) throw new Error("Selecione um pacote");
       if (!autorizaImagem) throw new Error("Responda à autorização de uso de imagem");
       if (!aceitouContrato) throw new Error("Você precisa aceitar os termos do contrato");
@@ -148,20 +183,20 @@ function AdesaoTurmaPage() {
         .map((p) => `${p.numero}ª Parcela - Vencimento: ${p.vencimento} - ${brl(p.valor)}`)
         .join("\n");
 
-      const textoContratoCompleto = `CONTRATO DE PRESTAÇÃO DE SERVIÇOS FOTOGRÁFICOS DE FORMATURA
+      const textoContratoCompleto = `CONTRATO DE PRESTAÇÃO DE SERVIÇOS FOTOGRÁFICOS E CINEMATOGRÁFICOS — ${tipoEventoNome.toUpperCase()}
 
 CONTRATADA: ${EMPRESA.nome}, CNPJ: ${EMPRESA.cnpj}, Contato: ${EMPRESA.contato}.
 CONTRATANTE: ${dadosPessoais.nome_completo}, CPF: ${dadosPessoais.cpf}, RG: ${dadosPessoais.rg || "Não informado"}, 
 Endereço: ${dadosPessoais.endereco} - ${dadosPessoais.cidade} - CEP: ${dadosPessoais.cep || "Não informado"}, 
 Telefone/WhatsApp: ${dadosPessoais.whatsapp}, E-mail: ${dadosPessoais.email}.
 
-TURMA: ${turma.nome} (${turma.curso} - ${turma.faculdade})
+EVENTO: ${turma.nome} (${turma.curso} - ${turma.faculdade})
 
 PACOTE SELECIONADO:
 ${pacoteSelecionado.nome}
 Material: ${pacoteSelecionado.material}
 Investimento Total: ${brl(pacoteSelecionado.investimento)}
-Forma de Pagamento: Boleto Bancário (${numParcelas}x de ${brl(pacoteSelecionado.investimento / numParcelas)})
+Forma de Pagamento: Boleto Bancário / PIX (${numParcelas}x de ${brl(pacoteSelecionado.investimento / numParcelas)})
 Dia de Vencimento Escolhido: Dia ${diaVencimento}
 
 CRONOGRAMA DE VENCIMENTOS:
@@ -288,10 +323,10 @@ Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às
     <div className="min-h-screen bg-muted/30 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto space-y-6">
         
-        {/* Cabeçalho da Turma */}
+        {/* Cabeçalho da Turma / Evento */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold uppercase tracking-wider">
-            <Sparkles className="size-3.5" /> Adesão de Formatura
+            <Sparkles className="size-3.5" /> {tipoEventoBadge}
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
             {turma.nome}
@@ -339,9 +374,9 @@ Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-xl">Área 1: Dados Pessoais do Formando</CardTitle>
+                  <CardTitle className="text-xl">Área 1: Dados Pessoais do {contratanteLabel}</CardTitle>
                   <CardDescription className="mt-1">
-                    Preencha com atenção. Estes dados constarão no seu contrato de formatura.
+                    Preencha com atenção. Estes dados constarão no seu contrato de prestação de serviços.
                   </CardDescription>
                 </div>
                 <Badge variant="outline" className="text-xs">Etapa 1 de 4</Badge>
@@ -734,7 +769,7 @@ Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às
                   <div className="bg-muted/30 p-3 rounded-lg space-y-2">
                     <p><strong className="text-foreground">CONTRATADA:</strong> {EMPRESA.nome}, CNPJ: {EMPRESA.cnpj}, Contato: {EMPRESA.contato}.</p>
                     <p><strong className="text-foreground">CONTRATANTE:</strong> {dadosPessoais.nome_completo}, CPF: {dadosPessoais.cpf}, RG: {dadosPessoais.rg || "Não informado"}, Endereço: {dadosPessoais.endereco}, Cidade: {dadosPessoais.cidade}, WhatsApp: {dadosPessoais.whatsapp}, E-mail: {dadosPessoais.email}.</p>
-                    <p><strong className="text-foreground">TURMA:</strong> {turma.nome} ({turma.curso} – {turma.faculdade}).</p>
+                    <p><strong className="text-foreground">{isEnsaio ? "ENSAIO" : "TURMA"}:</strong> {turma.nome} ({turma.curso} - {turma.faculdade})</p>
                   </div>
                 </div>
 

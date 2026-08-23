@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Camera } from "lucide-react";
-import { DemandaManager } from "@/components/app/DemandaManager";
+import { DemandaEventManager } from "@/components/app/DemandaEventManager";
 
 export const Route = createFileRoute("/_authenticated/demandas/ensaio")({
   head: () => ({
     meta: [
       { title: "Demandas: Ensaio Fotográfico | JM Formaturas" },
-      { name: "description", content: "Gestão de ensaios fotográficos com contratos, parcelas e login por CPF." },
+      { name: "description", content: "Gestão de eventos e ensaios fotográficos com contratos, pacotes e links de adesão." },
       { property: "og:title", content: "Demandas: Ensaio Fotográfico | JM Formaturas" },
       { property: "og:description", content: "Gestão de ensaios individuais, corporativos, gestantes e pré-wedding." },
     ],
@@ -16,10 +16,10 @@ export const Route = createFileRoute("/_authenticated/demandas/ensaio")({
 
 function EnsaioPage() {
   return (
-    <DemandaManager
+    <DemandaEventManager
       tipo="ensaio"
       titulo="ENSAIO FOTOGRÁFICO"
-      subtitulo="Gestão de ensaios pré-wedding, gestante, corporativos e individuais com acesso por CPF."
+      subtitulo="Cadastre eventos de ensaios fotográficos, gerencie pacotes, gere links de adesão e acompanhe contratos e parcelas."
       icon={Camera}
       themeColor="blue"
     />

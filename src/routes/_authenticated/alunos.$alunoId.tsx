@@ -126,7 +126,7 @@ function AlunoDetalhe() {
     queryFn: async () => {
       const aluno = await supabase
         .from("alunos")
-        .select("*, turmas(id, nome, curso, faculdade, semestre)")
+        .select("*, turmas(id, nome, curso, faculdade, semestre, observacoes)")
         .eq("id", alunoId)
         .maybeSingle();
       if (aluno.error) throw aluno.error;
@@ -143,6 +143,37 @@ function AlunoDetalhe() {
   const aluno = data?.aluno;
   const contrato = data?.contrato;
   const parcelas = [...(contrato?.parcelas ?? [])].sort((a, b) => a.numero - b.numero);
+
+  const cursoLower = (aluno?.turmas?.curso || "").toLowerCase();
+  const obsLower = (aluno?.turmas?.observacoes || "").toLowerCase();
+  const isCasamento = cursoLower.includes("casamento") || obsLower.includes("casamento");
+  const isAniversario =
+    cursoLower.includes("aniversario") ||
+    cursoLower.includes("aniversário") ||
+    cursoLower.includes("festa") ||
+    obsLower.includes("festa") ||
+    obsLower.includes("aniversario");
+  const isEnsaio = cursoLower.includes("ensaio") || obsLower.includes("ensaio");
+
+  const contratanteLabel = isCasamento
+    ? "Contratante / Noivos"
+    : isAniversario
+    ? "Contratante / Aniversariante"
+    : isEnsaio
+    ? "Contratante"
+    : "Formando";
+
+  const eventoLabel = isCasamento
+    ? "Casamento"
+    : isAniversario
+    ? "Festa"
+    : isEnsaio
+    ? "Ensaio"
+    : "Turma";
+
+  const tipoDemandaLabel = isCasamento || isAniversario || isEnsaio ? "Tipo de Demanda" : "Curso";
+  const localLabel = isEnsaio ? "Local do Ensaio" : isCasamento || isAniversario ? "Local do Evento" : "Faculdade";
+  const dataLabel = isCasamento || isAniversario || isEnsaio ? "Data" : "Semestre";
 
   useEffect(() => {
     if (contrato?.texto_contrato) {
@@ -556,7 +587,7 @@ function AlunoDetalhe() {
         params={{ turmaId: aluno?.turma_id ?? "" }}
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
       >
-        <ArrowLeft className="size-4" /> Voltar para a turma
+        <ArrowLeft className="size-4" /> Voltar para {eventoLabel.toLowerCase()}
       </Link>
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -578,7 +609,7 @@ function AlunoDetalhe() {
 
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setOpenEditAluno(true)} className="gap-1.5">
-            <Edit className="size-4" /> Editar Formando
+            <Edit className="size-4" /> Editar {contratanteLabel}
           </Button>
 
           <Button
@@ -587,7 +618,7 @@ function AlunoDetalhe() {
             onClick={() => setOpenDeleteAluno(true)}
             className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
-            <Trash2 className="size-4" /> Excluir Formando
+            <Trash2 className="size-4" /> Excluir {contratanteLabel}
           </Button>
 
           {aluno?.status === "inativo" ? (
@@ -626,7 +657,7 @@ function AlunoDetalhe() {
             <div>
               <strong className="text-amber-700 dark:text-amber-500 block mb-1">Cadastro Inativo</strong>
               <p className="text-muted-foreground text-xs">
-                Este formando foi inativado. 
+                Este {contratanteLabel.toLowerCase()} foi inativado. 
                 {aluno.motivo_inativacao ? (
                   <> Motivo registrado: <span className="font-semibold text-foreground">"{aluno.motivo_inativacao}"</span></>
                 ) : (
@@ -643,7 +674,7 @@ function AlunoDetalhe() {
           <CardContent className="pt-6 text-sm text-foreground flex items-center gap-3">
             <KeyRound className="size-5 text-gold shrink-0" />
             <div>
-              <strong>Acesso do Formando:</strong> O acesso é liberado usando o <strong>CPF como login</strong> e o <strong>CPF como senha inicial</strong>.
+              <strong>Acesso do {contratanteLabel}:</strong> O acesso é liberado usando o <strong>CPF como login</strong> e o <strong>CPF como senha inicial</strong>.
             </div>
           </CardContent>
         </Card>
@@ -652,12 +683,12 @@ function AlunoDetalhe() {
       {/* LINHA DE DADOS */}
       {aluno && (
         <div className="mb-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-start">
-          {/* Card 1: Dados do Formando */}
+          {/* Card 1: Dados do Contratante / Formando */}
           <Card className="shadow-card">
             <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
                 <User className="size-4 text-gold shrink-0" />
-                Dados do Formando
+                Dados do {contratanteLabel}
               </CardTitle>
               <Button
                 variant={!showDados ? "default" : "secondary"}
@@ -685,12 +716,12 @@ function AlunoDetalhe() {
             )}
           </Card>
 
-          {/* Card 2: Dados da Turma */}
+          {/* Card 2: Dados do Ensaio / Evento / Turma */}
           <Card className="shadow-card">
             <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
               <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
                 <GraduationCap className="size-4 text-gold shrink-0" />
-                Dados da Turma
+                Dados do {eventoLabel}
               </CardTitle>
               <Button
                 variant={!showTurma ? "default" : "secondary"}
@@ -706,10 +737,10 @@ function AlunoDetalhe() {
             </CardHeader>
             {showTurma && (
               <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
-                <Info label="Turma" value={aluno.turmas?.nome} />
-                <Info label="Curso" value={aluno.turmas?.curso} />
-                <Info label="Faculdade" value={aluno.turmas?.faculdade} />
-                {aluno.turmas?.semestre && <Info label="Semestre" value={aluno.turmas?.semestre} />}
+                <Info label={eventoLabel} value={aluno.turmas?.nome} />
+                <Info label={tipoDemandaLabel} value={aluno.turmas?.curso} />
+                <Info label={localLabel} value={aluno.turmas?.faculdade} />
+                {aluno.turmas?.semestre && <Info label={dataLabel} value={aluno.turmas?.semestre} />}
               </CardContent>
             )}
           </Card>
@@ -1134,12 +1165,12 @@ function AlunoDetalhe() {
         </div>
       )}
 
-      {/* MODAL: EDITAR DADOS DO FORMANDO */}
+      {/* MODAL: EDITAR DADOS DO CONTRATANTE / FORMANDO */}
       <Dialog open={openEditAluno} onOpenChange={setOpenEditAluno}>
         {aluno && (
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Editar Dados do Formando</DialogTitle>
+              <DialogTitle>Editar Dados do {contratanteLabel}</DialogTitle>
             </DialogHeader>
             <form
               id="form-edit-aluno-page"
@@ -1192,12 +1223,12 @@ function AlunoDetalhe() {
         )}
       </Dialog>
 
-      {/* ALERT DIALOG: EXCLUIR FORMANDO */}
+      {/* ALERT DIALOG: EXCLUIR CONTRATANTE / FORMANDO */}
       <AlertDialog open={openDeleteAluno} onOpenChange={setOpenDeleteAluno}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-destructive flex items-center gap-2">
-              <AlertCircle className="size-5" /> Excluir Formando
+              <AlertCircle className="size-5" /> Excluir {contratanteLabel}
             </AlertDialogTitle>
             <AlertDialogDescription>
               Tem certeza que deseja excluir o formando <strong>{aluno?.nome_completo}</strong>?

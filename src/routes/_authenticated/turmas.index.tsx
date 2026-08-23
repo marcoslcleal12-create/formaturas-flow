@@ -168,10 +168,22 @@ function TurmasPage() {
     onError: (error) => toast.error(`Erro ao excluir turma: ${(error as Error).message}`),
   });
 
+  const isDemanda = (t: TurmaData) => {
+    const obs = (t.status || "").toLowerCase(); // Fallback, real check below
+    // we don't have observacoes in TurmaData by default in this file, we should fetch it or use curso
+    const c = (t.curso || "").toLowerCase();
+    return c.includes("ensaio") || 
+           c.includes("casamento") || 
+           c.includes("festa") || 
+           c.includes("aniversario") ||
+           c.includes("aniversário");
+  };
+
   const filteredTurmas = turmas.filter((t) => 
-    t.nome.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    !isDemanda(t) &&
+    (t.nome.toLowerCase().includes(searchQuery.toLowerCase()) || 
     t.curso.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.faculdade.toLowerCase().includes(searchQuery.toLowerCase())
+    t.faculdade.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (

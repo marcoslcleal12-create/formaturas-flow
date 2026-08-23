@@ -4277,9 +4277,12 @@ var require_with_selector_production = /* @__PURE__ */ __commonJSMin(((exports) 
 		return value;
 	};
 }));
-(/* @__PURE__ */ __commonJSMin(((exports, module) => {
+//#endregion
+//#region node_modules/use-sync-external-store/shim/with-selector.js
+var require_with_selector = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	module.exports = require_with_selector_production();
-})))();
+}));
+require_with_selector();
 /**
 * Read and select the nearest or targeted route match.
 * @link https://tanstack.com/router/latest/docs/framework/react/api/router/useMatchHook
@@ -14584,4 +14587,4 @@ var renderRouterToStream = async ({ request, router, responseHeaders, children }
 	throw new Error("No renderToReadableStream or renderToPipeableStream found in react-dom/server. Ensure you are using a version of react-dom that supports streaming.");
 };
 //#endregion
-export { executeRewriteInput as A, isNotFound as B, createInlineCssPlaceholderAsset as C, resolveManifestAssetLink as D, getStylesheetHref as E, isRedirect as F, isResolvedRedirect as I, parseRedirect as L, createLRUCache as M, decodePath as N, resolveManifestCssLink as O, dehydrateSsrMatchId as P, redirect as R, TSR_SCRIPT_BARRIER_ID as S, getScriptPreloadAttrs as T, createRootRouteWithContext as _, isSsrResponse as a, useRouter as b, stripSsrResponseBody as c, useRouterState as d, RouterProvider as f, createFileRoute as g, lazyRouteComponent as h, disposeSsrResponseDetached as i, invariant as j, _getRenderedMatches as k, Scripts as l, Outlet as m, bindSsrResponseToRequest as n, normalizeSsrResponse as o, createRouter as p, defineHandlerCallback as r, replaceSsrResponse as s, renderRouterToStream as t, HeadContent as u, Link as v, createInlineCssStyleAsset as w, GLOBAL_TSR as x, useNavigate as y, rootRouteId as z };
+export { _getRenderedMatches as A, rootRouteId as B, TSR_SCRIPT_BARRIER_ID as C, getStylesheetHref as D, getScriptPreloadAttrs as E, dehydrateSsrMatchId as F, isRedirect as I, isResolvedRedirect as L, invariant as M, createLRUCache as N, resolveManifestAssetLink as O, decodePath as P, parseRedirect as R, GLOBAL_TSR as S, createInlineCssStyleAsset as T, isNotFound as V, createRootRouteWithContext as _, isSsrResponse as a, require_with_selector as b, stripSsrResponseBody as c, useRouterState as d, RouterProvider as f, createFileRoute as g, lazyRouteComponent as h, disposeSsrResponseDetached as i, executeRewriteInput as j, resolveManifestCssLink as k, Scripts as l, Outlet as m, bindSsrResponseToRequest as n, normalizeSsrResponse as o, createRouter as p, defineHandlerCallback as r, replaceSsrResponse as s, renderRouterToStream as t, HeadContent as u, Link as v, createInlineCssPlaceholderAsset as w, useRouter as x, useNavigate as y, redirect as z };

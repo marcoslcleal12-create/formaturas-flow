@@ -1,5 +1,17 @@
 globalThis.__nitro_main__ = import.meta.url;
-import { n as HTTPError, o as NodeResponse, r as defineLazyEventHandler, t as H3Core } from "./_libs/h3+rou3+srvx.mjs";
+import { a as NodeResponse, n as HTTPError, r as defineLazyEventHandler, t as H3Core } from "./_libs/h3+rou3+srvx.mjs";
+//#region #nitro-vite-setup
+function lazyService(loader) {
+	let promise, mod;
+	return { fetch(req) {
+		if (mod) return mod.fetch(req);
+		if (!promise) promise = loader().then((_mod) => mod = _mod.default || _mod);
+		return promise.then((mod) => mod.fetch(req));
+	} };
+}
+var services = { ["ssr"]: lazyService(() => import("./_ssr/ssr.mjs")) };
+globalThis.__nitro_vite_envs__ = services;
+//#endregion
 //#region node_modules/nitro/dist/runtime/internal/route-rules.mjs
 var headers = ((m) => function headersRouteRule(event) {
 	for (const [key, value] of Object.entries(m.options || {})) event.res.headers.set(key, value);
@@ -199,7 +211,7 @@ function isrRouteRewrite(reqUrl, xNowRouteMatches) {
 //#endregion
 //#region node_modules/nitro/dist/presets/vercel/runtime/vercel.web.mjs
 var nitroApp = useNitroApp();
-var vercel_web_default = { async fetch(req, context) {
+var vercel_web_default = { fetch(req, context) {
 	const isrURL = isrRouteRewrite(req.url, req.headers.get("x-now-route-matches"));
 	if (isrURL) {
 		const { routeRules } = getRouteRules("", isrURL[0]);
