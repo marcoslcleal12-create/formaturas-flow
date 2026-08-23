@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import { LOGO_BASE64 } from "./logo-base64";
 
 export const EMPRESA = {
   nome: "JM Stúdio Fotográfico",
@@ -110,12 +111,12 @@ export function gerarContratoPdf(input: ContratoPdfInput) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const marginX = 16;
   const largura = 210 - marginX * 2;
-  let y = 16;
+  let y = 52; // Start lower on the first page to account for the logo
 
   const quebra = (altura = 6) => {
     if (y + altura > 282) {
       doc.addPage();
-      y = 16;
+      y = 16; // Reset y for subsequent pages
     }
   };
 
@@ -132,6 +133,12 @@ export function gerarContratoPdf(input: ContratoPdfInput) {
       y += gap;
     }
   };
+
+  // Add centered letterhead logo at the top of the first page
+  const logoWidth = 35;
+  const logoHeight = 35;
+  const logoX = (210 - logoWidth) / 2;
+  doc.addImage(LOGO_BASE64, "PNG", logoX, 10, logoWidth, logoHeight);
 
   linha("CONTRATO DE PRESTAÇÃO DE SERVIÇOS FOTOGRÁFICOS", { size: 13, bold: true, align: "center", gap: 6 });
   linha("INSTRUMENTO PARTICULAR DE TRABALHO", { size: 9, align: "center" });

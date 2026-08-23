@@ -1,1 +1,0 @@
-import{r as e}from"./useRouter-BP8vT1kh.js";import{R as t}from"./badge-SQtKrvE4.js";import{t as n}from"./DemandaEventManager-96l62qy-.js";var r=e();function i(){return(0,r.jsx)(n,{tipo:`casamento`,titulo:`CASAMENTO`,subtitulo:`Cadastre eventos de casamento, gerencie pacotes, gere links de adesão e acompanhe contratos e parcelas.`,icon:t,themeColor:`pink`})}export{i as component};
