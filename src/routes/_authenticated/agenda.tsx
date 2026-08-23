@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authenticated/agenda")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "Agenda de Eventos & Trabalhos | JM Formaturas" },
