@@ -273,82 +273,84 @@ function AgendaPage() {
       ) : (
         <>
           {/* calendário */}
-          <div className="mb-8 overflow-hidden rounded-xl border bg-card shadow-sm">
-            {/* header dias da semana */}
-            <div className="grid grid-cols-7 border-b bg-muted/40 text-center text-sm font-bold uppercase tracking-wide">
-              {DIAS_SEM.map(d => <div key={d} className="py-3">{d}</div>)}
-            </div>
-            {/* grid */}
-            <div className="grid grid-cols-7 divide-x divide-y divide-border">
-              {grade.map((cell, idx) => {
-                const evs = porData[cell.data] ?? [];
-                const isHoje = cell.data === hoje;
-                return (
-                  <div
-                    key={idx}
-                    className={`group relative flex flex-col min-h-[160px] p-2 transition-colors ${cell.outroMes ? "opacity-30" : "hover:bg-muted/20"} ${isHoje ? "bg-gold/10" : ""}`}
-                  >
-                    {/* número do dia + botão adicionar */}
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`flex size-7 items-center justify-center rounded-full text-sm font-bold ${isHoje ? "bg-gold text-white dark:text-brand" : "text-muted-foreground"}`}>
-                        {cell.dia}
-                      </span>
-                      {!cell.outroMes && (
-                        <button
-                          onClick={() => abrirNovo(cell.data)}
-                          className="hidden group-hover:flex size-6 items-center justify-center rounded-full bg-muted hover:bg-muted-foreground/20"
-                          title="Adicionar evento"
-                        >
-                          <Plus className="size-3.5" />
-                        </button>
-                      )}
-                    </div>
+          <div className="mb-8 overflow-hidden rounded-xl border bg-card shadow-sm overflow-x-auto">
+            <div className="min-w-[800px]">
+              {/* header dias da semana */}
+              <div className="grid grid-cols-7 border-b bg-muted/40 text-center text-sm font-bold uppercase tracking-wide">
+                {DIAS_SEM.map(d => <div key={d} className="py-3">{d}</div>)}
+              </div>
+              {/* grid */}
+              <div className="grid grid-cols-7 divide-x divide-y divide-border">
+                {grade.map((cell, idx) => {
+                  const evs = porData[cell.data] ?? [];
+                  const isHoje = cell.data === hoje;
+                  return (
+                    <div
+                      key={idx}
+                      className={`group relative flex flex-col min-h-[200px] p-2 transition-colors ${cell.outroMes ? "opacity-30" : "hover:bg-muted/20"} ${isHoje ? "bg-gold/10" : ""}`}
+                    >
+                      {/* número do dia + botão adicionar */}
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`flex size-7 items-center justify-center rounded-full text-base font-bold ${isHoje ? "bg-gold text-white dark:text-brand" : "text-muted-foreground"}`}>
+                          {cell.dia}
+                        </span>
+                        {!cell.outroMes && (
+                          <button
+                            onClick={() => abrirNovo(cell.data)}
+                            className="hidden group-hover:flex size-7 items-center justify-center rounded-full bg-muted hover:bg-muted-foreground/20"
+                            title="Adicionar evento"
+                          >
+                            <Plus className="size-4" />
+                          </button>
+                        )}
+                      </div>
 
-                    {/* eventos */}
-                    <div className="flex flex-col gap-1.5 flex-1">
-                      {evs.map(ev => (
-                        <button
-                          key={ev.id}
-                          onClick={() => abrirEditar(ev)}
-                          className={`w-full rounded-lg px-2 py-1.5 text-left shadow-sm transition hover:brightness-95 active:scale-[0.98] ${
-                            ev.empresa_tipo === "jm"
-                              ? "bg-emerald-100 dark:bg-emerald-900/50"
-                              : "bg-purple-100 dark:bg-purple-900/50"
-                          }`}
-                        >
-                          {/* fotógrafo em destaque */}
-                          <div className={`flex items-center gap-1 font-bold text-xs leading-tight mb-0.5 ${
-                            ev.empresa_tipo === "jm"
-                              ? "text-emerald-800 dark:text-emerald-200"
-                              : "text-purple-800 dark:text-purple-200"
-                          }`}>
-                            <Camera className="size-3 shrink-0" />
-                            <span className="truncate">{ev.fotografo || "—"}</span>
-                          </div>
-                          {/* descrição */}
-                          <div className={`truncate text-[11px] font-semibold leading-tight ${
-                            ev.empresa_tipo === "jm"
-                              ? "text-emerald-700 dark:text-emerald-300"
-                              : "text-purple-700 dark:text-purple-300"
-                          }`}>
-                            {ev.descricao || ev.titulo}
-                          </div>
-                          {/* local */}
-                          {ev.cidade && (
-                            <div className={`truncate text-[10px] leading-tight mt-0.5 ${
+                      {/* eventos */}
+                      <div className="flex flex-col gap-2 flex-1">
+                        {evs.map(ev => (
+                          <button
+                            key={ev.id}
+                            onClick={() => abrirEditar(ev)}
+                            className={`w-full rounded-xl p-3 text-left shadow-sm transition hover:brightness-95 active:scale-[0.98] ${
                               ev.empresa_tipo === "jm"
-                                ? "text-emerald-600/80 dark:text-emerald-400/80"
-                                : "text-purple-600/80 dark:text-purple-400/80"
+                                ? "bg-emerald-100 dark:bg-emerald-900/50"
+                                : "bg-purple-100 dark:bg-purple-900/50"
+                            }`}
+                          >
+                            {/* fotógrafo em destaque */}
+                            <div className={`flex items-center gap-1.5 font-bold text-sm leading-tight mb-1 ${
+                              ev.empresa_tipo === "jm"
+                                ? "text-emerald-900 dark:text-emerald-100"
+                                : "text-purple-900 dark:text-purple-100"
                             }`}>
-                              📍 {ev.cidade}
+                              <Camera className="size-4 shrink-0" />
+                              <span className="break-words">{ev.fotografo || "—"}</span>
                             </div>
-                          )}
-                        </button>
-                      ))}
+                            {/* descrição */}
+                            <div className={`text-sm font-semibold leading-snug break-words ${
+                              ev.empresa_tipo === "jm"
+                                ? "text-emerald-800 dark:text-emerald-200"
+                                : "text-purple-800 dark:text-purple-200"
+                            }`}>
+                              {ev.descricao || ev.titulo}
+                            </div>
+                            {/* local */}
+                            {ev.cidade && (
+                              <div className={`text-xs font-medium leading-snug mt-1 break-words ${
+                                ev.empresa_tipo === "jm"
+                                  ? "text-emerald-700 dark:text-emerald-300"
+                                  : "text-purple-700 dark:text-purple-300"
+                              }`}>
+                                📍 {ev.cidade}
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
 
