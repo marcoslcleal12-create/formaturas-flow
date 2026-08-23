@@ -542,6 +542,16 @@ var ChevronRight = createLucideIcon("chevron-right", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var ChevronLeft = createLucideIcon("chevron-left", [["path", {
+	d: "m15 18-6-6 6-6",
+	key: "1wnfg3"
+}]]);
+/**
+* @license lucide-react v1.33.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var ChevronUp = createLucideIcon("chevron-up", [["path", {
 	d: "m18 15-6-6-6 6",
 	key: "153udz"
@@ -1010,6 +1020,38 @@ var Link2 = createLucideIcon("link-2", [
 		y1: "12",
 		y2: "12",
 		key: "1jonct"
+	}]
+]);
+/**
+* @license lucide-react v1.33.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var List = createLucideIcon("list", [
+	["path", {
+		d: "M3 5h.01",
+		key: "18ugdj"
+	}],
+	["path", {
+		d: "M3 12h.01",
+		key: "nlz23k"
+	}],
+	["path", {
+		d: "M3 19h.01",
+		key: "noohij"
+	}],
+	["path", {
+		d: "M8 5h13",
+		key: "1pao27"
+	}],
+	["path", {
+		d: "M8 12h13",
+		key: "1za7za"
+	}],
+	["path", {
+		d: "M8 19h13",
+		key: "m83p4d"
 	}]
 ]);
 /**
@@ -1634,4 +1676,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { ChevronUp as $, Link2 as A, FileDown as B, Plus as C, Package as D, PanelLeft as E, GraduationCap as F, DollarSign as G, ExternalLink as H, Funnel as I, Clock as J, CreditCard as K, FolderKanban as L, Layers as M, KeyRound as N, MapPin as O, Heart as P, CircleAlert as Q, FileX as R, Printer as S, PartyPopper as T, EllipsisVertical as U, Eye as V, Download as W, CirclePlus as X, Circle as Y, CircleCheck as Z, Save as _, ArrowDownLeft as _t, UserX as a, Camera as at, Receipt as b, UserCheck as c, CalendarDays as ct, TrendingDown as d, Briefcase as dt, ChevronRight as et, Trash2 as f, Barcode as ft, Search as g, ArrowLeftRight as gt, ShieldCheck as h, ArrowLeft as ht, User as i, ChartColumn as it, LayoutDashboard as j, LogOut as k, TriangleAlert as l, Calculator as lt, Sparkles as m, ArrowRight as mt, Wallet as n, Check as nt, UserRound as o, Calendar as ot, SquarePen as p, ArrowUpRight as pt, Copy as q, Users as r, ChartPie as rt, UserPlus as s, CalendarRange as st, X as t, ChevronDown as tt, TrendingUp as u, Building2 as ut, RotateCcw as v, Phone as w, QrCode as x, RefreshCw as y, FileText as z };
+export { CircleAlert as $, List as A, FileText as B, Plus as C, Package as D, PanelLeft as E, Heart as F, Download as G, Eye as H, GraduationCap as I, Copy as J, DollarSign as K, Funnel as L, LayoutDashboard as M, Layers as N, MapPin as O, KeyRound as P, CircleCheck as Q, FolderKanban as R, Printer as S, PartyPopper as T, ExternalLink as U, FileDown as V, EllipsisVertical as W, Circle as X, Clock as Y, CirclePlus as Z, Save as _, ArrowLeft as _t, UserX as a, ChartPie as at, Receipt as b, UserCheck as c, Calendar as ct, TrendingDown as d, Calculator as dt, ChevronUp as et, Trash2 as f, Building2 as ft, Search as g, ArrowRight as gt, ShieldCheck as h, ArrowUpRight as ht, User as i, Check as it, Link2 as j, LogOut as k, TriangleAlert as l, CalendarRange as lt, Sparkles as m, Barcode as mt, Wallet as n, ChevronRight as nt, UserRound as o, ChartColumn as ot, SquarePen as p, Briefcase as pt, CreditCard as q, Users as r, ChevronDown as rt, UserPlus as s, Camera as st, X as t, ChevronLeft as tt, TrendingUp as u, CalendarDays as ut, RotateCcw as v, ArrowLeftRight as vt, Phone as w, QrCode as x, RefreshCw as y, ArrowDownLeft as yt, FileX as z };

@@ -39,9 +39,9 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    // Verifica se já existe sessão ativa
+    // Verifica se já existe sessão ativa do Supabase Auth (Admin)
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) void navigate({ to: "/painel" });
+      if (data.session) void navigate({ to: "/agenda" });
     });
     const clientSession = getClienteSession();
     if (clientSession?.cpf) {
@@ -125,7 +125,7 @@ function AuthPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         clearClienteSession();
-        void navigate({ to: "/painel" });
+        void navigate({ to: "/agenda" });
       } else {
         const { error } = await supabase.auth.signUp({
           email,
@@ -138,7 +138,7 @@ function AuthPage() {
         if (error) throw error;
         clearClienteSession();
         toast.success("Conta criada!");
-        void navigate({ to: "/painel" });
+        void navigate({ to: "/agenda" });
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Não foi possível entrar");

@@ -14,6 +14,7 @@ import {
   UserX,
   ArrowLeftRight,
   UserCheck,
+  CalendarDays,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -89,6 +90,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </SidebarGroupLabel>
                   <SidebarGroupContent>
                     <SidebarMenu>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={currentPath.startsWith("/agenda")}
+                          tooltip="AGENDA"
+                        >
+                          <Link to="/agenda" className="flex items-center gap-2.5 font-medium tracking-wide">
+                            <CalendarDays className="size-4 text-gold" />
+                            <span>AGENDA</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+
                       <SidebarMenuItem>
                         <SidebarMenuButton
                           asChild
