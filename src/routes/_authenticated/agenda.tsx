@@ -237,11 +237,11 @@ export function AgendaPage() {
       // Filtro de busca textual
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchTitulo = ev.titulo.toLowerCase().includes(q);
-        const matchEmpresa = ev.empresa_nome.toLowerCase().includes(q);
+        const matchTitulo = ev.titulo?.toLowerCase().includes(q) ?? false;
+        const matchEmpresa = ev.empresa_nome?.toLowerCase().includes(q) ?? false;
         const matchLocal = ev.local_evento?.toLowerCase().includes(q) ?? false;
         const matchCidade = ev.cidade?.toLowerCase().includes(q) ?? false;
-        const matchData = ev.data_evento.includes(q);
+        const matchData = ev.data_evento?.includes(q) ?? false;
         return matchTitulo || matchEmpresa || matchLocal || matchCidade || matchData;
       }
 
@@ -300,10 +300,11 @@ export function AgendaPage() {
   const eventosPorData = useMemo(() => {
     const map: Record<string, AgendaEvento[]> = {};
     for (const ev of eventosFiltrados) {
-      if (!map[ev.data_evento]) {
-        map[ev.data_evento] = [];
+      const dataEv = ev.data_evento || "sem-data";
+      if (!map[dataEv]) {
+        map[dataEv] = [];
       }
-      map[ev.data_evento].push(ev);
+      map[dataEv].push(ev);
     }
     return map;
   }, [eventosFiltrados]);
@@ -313,7 +314,7 @@ export function AgendaPage() {
     const mm = String(dataAtual.getMonth() + 1).padStart(2, "0");
     const prefixo = `${anoAtual}-${mm}`;
 
-    const doMes = eventos.filter((e) => e.data_evento.startsWith(prefixo));
+    const doMes = eventos.filter((e) => e.data_evento?.startsWith(prefixo));
     const jmCount = doMes.filter((e) => e.empresa_tipo === "jm").length;
     const outraCount = doMes.filter((e) => e.empresa_tipo === "outra").length;
 
