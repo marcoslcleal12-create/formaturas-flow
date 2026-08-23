@@ -278,6 +278,64 @@ var Building2 = createLucideIcon("building-2", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var Calculator = createLucideIcon("calculator", [
+	["rect", {
+		width: "16",
+		height: "20",
+		x: "4",
+		y: "2",
+		rx: "2",
+		key: "1nb95v"
+	}],
+	["line", {
+		x1: "8",
+		x2: "16",
+		y1: "6",
+		y2: "6",
+		key: "x4nwl0"
+	}],
+	["line", {
+		x1: "16",
+		x2: "16",
+		y1: "14",
+		y2: "18",
+		key: "wjye3r"
+	}],
+	["path", {
+		d: "M16 10h.01",
+		key: "1m94wz"
+	}],
+	["path", {
+		d: "M12 10h.01",
+		key: "1nrarc"
+	}],
+	["path", {
+		d: "M8 10h.01",
+		key: "19clt8"
+	}],
+	["path", {
+		d: "M12 14h.01",
+		key: "1etili"
+	}],
+	["path", {
+		d: "M8 14h.01",
+		key: "6423bh"
+	}],
+	["path", {
+		d: "M12 18h.01",
+		key: "mhygvu"
+	}],
+	["path", {
+		d: "M8 18h.01",
+		key: "lrp35t"
+	}]
+]);
+/**
+* @license lucide-react v1.33.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var CalendarDays = createLucideIcon("calendar-days", [
 	["path", {
 		d: "M8 2v3",
@@ -765,6 +823,30 @@ var FileText = createLucideIcon("file-text", [
 	["path", {
 		d: "M16 17H8",
 		key: "z1uh3a"
+	}]
+]);
+/**
+* @license lucide-react v1.33.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var FileX = createLucideIcon("file-x", [
+	["path", {
+		d: "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
+		key: "1oefj6"
+	}],
+	["path", {
+		d: "M14 2v5a1 1 0 0 0 1 1h5",
+		key: "wfsgrz"
+	}],
+	["path", {
+		d: "m14.5 12.5-5 5",
+		key: "b62r18"
+	}],
+	["path", {
+		d: "m9.5 12.5 5 5",
+		key: "1rk7el"
 	}]
 ]);
 /**
@@ -1552,4 +1634,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { ChevronRight as $, Link2 as A, Eye as B, Plus as C, Package as D, PanelLeft as E, GraduationCap as F, CreditCard as G, EllipsisVertical as H, Funnel as I, Circle as J, Copy as K, FolderKanban as L, Layers as M, KeyRound as N, MapPin as O, Heart as P, ChevronUp as Q, FileText as R, Printer as S, PartyPopper as T, Download as U, ExternalLink as V, DollarSign as W, CircleCheck as X, CirclePlus as Y, CircleAlert as Z, Save as _, UserX as a, Calendar as at, Receipt as b, UserCheck as c, Building2 as ct, TrendingDown as d, ArrowUpRight as dt, ChevronDown as et, Trash2 as f, ArrowRight as ft, Search as g, ShieldCheck as h, ArrowDownLeft as ht, User as i, Camera as it, LayoutDashboard as j, LogOut as k, TriangleAlert as l, Briefcase as lt, Sparkles as m, ArrowLeftRight as mt, Wallet as n, ChartPie as nt, UserRound as o, CalendarRange as ot, SquarePen as p, ArrowLeft as pt, Clock as q, Users as r, ChartColumn as rt, UserPlus as s, CalendarDays as st, X as t, Check as tt, TrendingUp as u, Barcode as ut, RotateCcw as v, Phone as w, QrCode as x, RefreshCw as y, FileDown as z };
+export { ChevronUp as $, Link2 as A, FileDown as B, Plus as C, Package as D, PanelLeft as E, GraduationCap as F, DollarSign as G, ExternalLink as H, Funnel as I, Clock as J, CreditCard as K, FolderKanban as L, Layers as M, KeyRound as N, MapPin as O, Heart as P, CircleAlert as Q, FileX as R, Printer as S, PartyPopper as T, EllipsisVertical as U, Eye as V, Download as W, CirclePlus as X, Circle as Y, CircleCheck as Z, Save as _, ArrowDownLeft as _t, UserX as a, Camera as at, Receipt as b, UserCheck as c, CalendarDays as ct, TrendingDown as d, Briefcase as dt, ChevronRight as et, Trash2 as f, Barcode as ft, Search as g, ArrowLeftRight as gt, ShieldCheck as h, ArrowLeft as ht, User as i, ChartColumn as it, LayoutDashboard as j, LogOut as k, TriangleAlert as l, Calculator as lt, Sparkles as m, ArrowRight as mt, Wallet as n, Check as nt, UserRound as o, Calendar as ot, SquarePen as p, ArrowUpRight as pt, Copy as q, Users as r, ChartPie as rt, UserPlus as s, CalendarRange as st, X as t, ChevronDown as tt, TrendingUp as u, Building2 as ut, RotateCcw as v, Phone as w, QrCode as x, RefreshCw as y, FileText as z };

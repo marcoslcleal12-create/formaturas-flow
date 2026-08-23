@@ -19,7 +19,9 @@ import {
   Save,
   Camera,
   ExternalLink,
-  UserX
+  UserX,
+  FileX,
+  Calculator
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -34,7 +36,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -272,6 +274,7 @@ function AlunoDetalhe() {
   // Inativar Aluno Mutation
   const inativarAluno = useMutation({
     mutationFn: async (motivo: string) => {
+      // 1. Inativar cadastro do aluno
       const { error } = await supabase
         .from("alunos")
         .update({
@@ -280,13 +283,26 @@ function AlunoDetalhe() {
         })
         .eq("id", alunoId);
       if (error) throw error;
+
+      // 2. Deletar boletos futuros / parcelas não pagas (preservar as pagas para o fluxo de caixa)
+      if (contrato?.id) {
+        const { error: delError } = await supabase
+          .from("parcelas")
+          .delete()
+          .eq("contrato_id", contrato.id)
+          .neq("status", "pago");
+        if (delError) throw delError;
+      }
     },
     onSuccess: () => {
-      toast.success("Cadastro do formando inativado com sucesso!");
+      toast.success("Cadastro inativado! Boletos futuros não pagos foram cancelados.");
       setOpenInativarAluno(false);
       setMotivoInativacao("");
       void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
       void queryClient.invalidateQueries({ queryKey: ["turma"] });
+      void queryClient.invalidateQueries({ queryKey: ["inativos"] });
+      void queryClient.invalidateQueries({ queryKey: ["financeiro-data"] });
+      void queryClient.invalidateQueries({ queryKey: ["fluxo-caixa-data"] });
     },
     onError: (error) => toast.error(`Erro ao inativar cliente: ${(error as Error).message}`),
   });
@@ -576,9 +592,19 @@ function AlunoDetalhe() {
   };
 
   const hoje = new Date().toISOString().slice(0, 10);
-  const totalPago = parcelas.reduce((s, p) => s + Number(p.valor_pago), 0);
+  const totalPago = parcelas.reduce((s, p) => s + Number(p.valor_pago || (p.status === "pago" ? p.valor : 0)), 0);
   const totalParcelas = parcelas.reduce((s, p) => s + Number(p.valor), 0);
   const atrasadas = parcelas.filter((p) => p.status !== "pago" && p.vencimento < hoje);
+
+  // Métricas do Distrato / Inativação
+  const parcelasPagas = parcelas.filter((p) => p.status === "pago");
+  const parcelasPagasSemEntrada = parcelasPagas.filter((p) => p.numero > 0).length;
+  const numParcelasContrato = contrato?.num_parcelas ?? 0;
+  const boletosCanceladosCount = Math.max(0, numParcelasContrato - parcelasPagasSemEntrada);
+  const multaRescisao = contrato ? Number(contrato.valor_total) * 0.30 : 0;
+  const custoCancelamentoBoletos = boletosCanceladosCount * 5;
+  const totalEncargosRescisao = multaRescisao + custoCancelamentoBoletos;
+  const saldoDistrato = totalEncargosRescisao - totalPago;
 
   return (
     <AppShell>
@@ -650,519 +676,674 @@ function AlunoDetalhe() {
         </div>
       </div>
 
-      {aluno?.status === "inativo" && (
-        <Card className="mb-6 shadow-card border-amber-500/40 bg-amber-500/5">
-          <CardContent className="pt-6 text-sm text-foreground flex items-start gap-3">
-            <AlertCircle className="size-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <strong className="text-amber-700 dark:text-amber-500 block mb-1">Cadastro Inativo</strong>
-              <p className="text-muted-foreground text-xs">
-                Este {contratanteLabel.toLowerCase()} foi inativado. 
-                {aluno.motivo_inativacao ? (
-                  <> Motivo registrado: <span className="font-semibold text-foreground">"{aluno.motivo_inativacao}"</span></>
-                ) : (
-                  " Nenhum motivo foi especificado."
-                )}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!aluno?.user_id && (
-        <Card className="mb-6 shadow-card border-gold/40 bg-gold/5">
-          <CardContent className="pt-6 text-sm text-foreground flex items-center gap-3">
-            <KeyRound className="size-5 text-gold shrink-0" />
-            <div>
-              <strong>Acesso do {contratanteLabel}:</strong> O acesso é liberado usando o <strong>CPF como login</strong> e o <strong>CPF como senha inicial</strong>.
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* LINHA DE DADOS */}
-      {aluno && (
-        <div className="mb-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-start">
-          {/* Card 1: Dados do Contratante / Formando */}
-          <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
-                <User className="size-4 text-gold shrink-0" />
-                Dados do {contratanteLabel}
-              </CardTitle>
-              <Button
-                variant={!showDados ? "default" : "secondary"}
-                size="sm"
-                className="h-7 text-xs px-2.5 rounded-md"
-                onClick={() => setShowDados(!showDados)}
-              >
-                {showDados ? "Ocultar" : "Visualizar"}
-              </Button>
-            </CardHeader>
-            {showDados && (
-              <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
-                <Info label="Nome Completo" value={aluno.nome_completo} />
-                <Info label="CPF" value={aluno.cpf} />
-                {aluno.rg && <Info label="RG" value={aluno.rg} />}
-                <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
-                <Info label="WhatsApp" value={aluno.whatsapp} />
-                <Info label="E-mail" value={aluno.email} />
-                <Info label="Endereço" value={aluno.endereco} />
-                <Info label="Cidade" value={aluno.cidade} />
-                {aluno.data_nascimento && (
-                  <Info label="Data Nasc." value={new Date(aluno.data_nascimento + "T12:00:00").toLocaleDateString("pt-BR")} />
-                )}
-              </CardContent>
-            )}
-          </Card>
-
-          {/* Card 2: Dados do Ensaio / Evento / Turma */}
-          <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
-              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
-                <GraduationCap className="size-4 text-gold shrink-0" />
-                Dados do {eventoLabel}
-              </CardTitle>
-              <Button
-                variant={!showTurma ? "default" : "secondary"}
-                size="sm"
-                className="h-7 text-xs px-2.5 rounded-md"
-                onClick={() => setShowTurma(!showTurma)}
-              >
-                {showTurma ? "Ocultar" : "Visualizar"}
-              </Button>
-              <Badge variant="secondary" className="text-[11px] py-0 px-1.5 ml-auto">
-                {aluno.status ?? "Ativo"}
-              </Badge>
-            </CardHeader>
-            {showTurma && (
-              <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
-                <Info label={eventoLabel} value={aluno.turmas?.nome} />
-                <Info label={tipoDemandaLabel} value={aluno.turmas?.curso} />
-                <Info label={localLabel} value={aluno.turmas?.faculdade} />
-                {aluno.turmas?.semestre && <Info label={dataLabel} value={aluno.turmas?.semestre} />}
-              </CardContent>
-            )}
-          </Card>
-
-          {/* Card 3: Pacote Escolhido */}
-          <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
-                <Package className="size-4 text-gold shrink-0" />
-                Pacote Escolhido
-              </CardTitle>
-              <Button
-                variant={!showPacote ? "default" : "secondary"}
-                size="sm"
-                className="h-7 text-xs px-2.5 rounded-md"
-                onClick={() => setShowPacote(!showPacote)}
-              >
-                {showPacote ? "Ocultar" : "Visualizar"}
-              </Button>
-            </CardHeader>
-            {showPacote && (
-              <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
-                {contrato ? (
-                  <>
-                    <Info label="Pacote" value={contrato.pacote} />
-                    <Info label="Valor Total" value={brl(Number(contrato.valor_total))} />
-                    {Number(contrato.desconto) > 0 && <Info label="Desconto" value={brl(Number(contrato.desconto))} />}
-                    {Number(contrato.valor_entrada) > 0 && <Info label="Entrada" value={brl(Number(contrato.valor_entrada))} />}
-                    <Info label="Condição" value={`${contrato.num_parcelas}x no ${contrato.forma_pagamento || "boleto"}`} />
-                    <Info label="Dia Vencimento" value={`Todo dia ${contrato.dia_vencimento || 10}`} />
-                    {aluno?.turmas?.semestre && <Info label="Semestre" value={aluno.turmas.semestre} />}
-                  </>
-                ) : (
-                  <p className="text-muted-foreground text-xs py-2">Nenhum pacote contratado no momento.</p>
-                )}
-              </CardContent>
-            )}
-          </Card>
-
-          {/* Card 4: Contrato */}
-          <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
-                <FileText className="size-4 text-gold shrink-0" />
-                Contrato
-              </CardTitle>
-              <Button
-                variant={!showContrato ? "default" : "secondary"}
-                size="sm"
-                className="h-7 text-xs px-2.5 rounded-md"
-                onClick={() => setShowContrato(!showContrato)}
-              >
-                {showContrato ? "Ocultar" : "Visualizar"}
-              </Button>
-            </CardHeader>
-            {showContrato && (
-              <CardContent className="p-4 pt-0 space-y-2 text-xs border-t border-border/40 mt-1 pt-2.5">
-                {contrato ? (
-                  <>
-                    <p className="text-muted-foreground text-xs">
-                      Documento de <span className="font-medium text-foreground">{contrato.pacote}</span>
-                    </p>
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button variant="outline" size="sm" className="h-7 text-xs px-2.5 gap-1">
-                            <Eye className="size-3.5" /> Ver / Editar
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-                          <DialogHeader>
-                            <DialogTitle>Contrato</DialogTitle>
-                          </DialogHeader>
-                          <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-sm mt-2">
-                            <div className="flex items-center justify-between">
-                              <Label htmlFor="texto-contrato-page" className="font-semibold">Cláusulas (editáveis)</Label>
-                              <button
-                                type="button"
-                                className="text-xs text-muted-foreground underline hover:text-foreground"
-                                onClick={() => setTextoContrato(CLAUSULAS_PADRAO)}
-                              >
-                                restaurar modelo padrão
-                              </button>
-                            </div>
-                            <Textarea
-                              id="texto-contrato-page"
-                              value={textoContrato}
-                              onChange={(e) => setTextoContrato(e.target.value)}
-                              className="min-h-[340px] font-mono text-xs leading-relaxed"
-                            />
-                          </div>
-                          <DialogFooter>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={salvarContratoTexto.isPending}
-                              onClick={() => salvarContratoTexto.mutate()}
-                              className="gap-1.5"
-                            >
-                              <Save className="size-4" /> Salvar Alterações
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-
-                      <Button
-                        size="sm"
-                        className="h-7 text-xs px-2.5 gap-1"
-                        onClick={handleBaixarContratoPdf}
-                      >
-                        <FileDown className="size-3.5" /> Baixar PDF
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-muted-foreground text-xs py-2">Nenhum contrato gerado ainda.</p>
-                )}
-              </CardContent>
-            )}
-          </Card>
-        </div>
-      )}
-
-      {/* LINHA DE SELEÇÃO */}
-      {aluno && (
-        <div className="mb-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-start">
-          {/* Card 1: Seleção */}
-          <Card className="shadow-card h-full flex flex-col">
-            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
-                <Camera className="size-4 text-gold shrink-0" />
-                SELEÇÃO
-              </CardTitle>
-              <Button
-                variant={!showSel1 ? "default" : "secondary"}
-                size="sm"
-                className="h-7 text-xs px-2.5 rounded-md ml-auto"
-                onClick={() => setShowSel1(!showSel1)}
-              >
-                {showSel1 ? "Ocultar" : "Visualizar"}
-              </Button>
-            </CardHeader>
-            {showSel1 && (
-              <CardContent className="p-4 pt-0 text-xs text-muted-foreground border-t border-border/40 mt-1 pt-2.5 flex-1 flex flex-col">
-                <p className="mb-3">Plataforma YouFocus. O Formando acessa com o mesmo CPF.</p>
-                <Button asChild variant="secondary" size="sm" className="w-full mt-auto">
-                  <a href={SELPICS_URL} target="_blank" rel="noopener noreferrer">
-                    Acessar Link <ExternalLink className="size-3.5 ml-1" />
-                  </a>
-                </Button>
-              </CardContent>
-            )}
-          </Card>
-
-          {/* Card 2: Minhas Fotos Selecionadas */}
-          <Card className="shadow-card h-full flex flex-col">
-            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
-              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
-                <CheckCircle2 className="size-4 text-gold shrink-0" />
-                MINHAS FOTOS SELECIONADAS
-              </CardTitle>
-              <Button
-                variant={!showSel2 ? "default" : "secondary"}
-                size="sm"
-                className="h-7 text-xs px-2.5 rounded-md ml-auto"
-                onClick={() => setShowSel2(!showSel2)}
-              >
-                {showSel2 ? "Ocultar" : "Visualizar"}
-              </Button>
-            </CardHeader>
-            {showSel2 && (
-              <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1">
-                <form 
-                  className="space-y-3 flex flex-col h-full"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const form = new FormData(e.currentTarget);
-                    const prazoStr = form.get("prazo_fotos_selecionadas") as string;
-                    updateLinksAluno.mutate({
-                      link_fotos_selecionadas: form.get("link_fotos_selecionadas") as string || null,
-                      prazo_fotos_selecionadas: prazoStr ? parseInt(prazoStr, 10) : null,
-                      fotos_liberadas: form.get("fotos_liberadas") === "on",
-                    });
-                  }}
-                >
-                  <div className="space-y-1">
-                    <Label className="text-xs">Link de Hospedagem</Label>
-                    <Input 
-                      name="link_fotos_selecionadas" 
-                      className="h-8 text-xs" 
-                      placeholder="https://..." 
-                      defaultValue={aluno.link_fotos_selecionadas || ""} 
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Prazo de Vencimento (Dias)</Label>
-                    <Input 
-                      name="prazo_fotos_selecionadas" 
-                      type="number" 
-                      className="h-8 text-xs" 
-                      placeholder="Ex: 150"
-                      defaultValue={aluno.prazo_fotos_selecionadas || ""} 
-                    />
-                  </div>
-                  <div className="flex items-center space-x-2 pt-1 pb-1">
-                    <Switch 
-                      id="fotos_liberadas" 
-                      name="fotos_liberadas" 
-                      defaultChecked={aluno.fotos_liberadas || false} 
-                    />
-                    <Label htmlFor="fotos_liberadas" className="text-xs font-medium cursor-pointer">
-                      Liberar visualização
-                    </Label>
-                  </div>
-                  <div className="flex-1"></div>
-                  <Button size="sm" className="w-full h-8 text-xs mt-3" disabled={updateLinksAluno.isPending}>
-                    {updateLinksAluno.isPending ? "Salvando..." : "Salvar Configurações"}
-                  </Button>
-                </form>
-              </CardContent>
-            )}
-          </Card>
-
-          {/* Card 3: Aprovação de Álbum */}
-          <Card className="shadow-card h-full flex flex-col">
-            <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
-              <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
-                <FileText className="size-4 text-gold shrink-0" />
-                APROVAÇÃO DE ÁLBUM
-              </CardTitle>
-              <Button
-                variant={!showSel3 ? "default" : "secondary"}
-                size="sm"
-                className="h-7 text-xs px-2.5 rounded-md ml-auto"
-                onClick={() => setShowSel3(!showSel3)}
-              >
-                {showSel3 ? "Ocultar" : "Visualizar"}
-              </Button>
-            </CardHeader>
-            {showSel3 && (
-              <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1">
-                <form 
-                  className="space-y-3 h-full flex flex-col"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const form = new FormData(e.currentTarget);
-                    updateLinksAluno.mutate({
-                      link_aprovacao_album: form.get("link_aprovacao_album") as string || null,
-                      album_liberado: form.get("album_liberado") === "on",
-                    });
-                  }}
-                >
-                  <div className="space-y-1">
-                    <Label className="text-xs">Link do Álbum</Label>
-                    <Input 
-                      name="link_aprovacao_album" 
-                      className="h-8 text-xs" 
-                      placeholder="https://..." 
-                      defaultValue={aluno.link_aprovacao_album || ""} 
-                    />
-                  </div>
-                  <div className="flex items-center space-x-2 pt-1 pb-1">
-                    <Switch 
-                      id="album_liberado" 
-                      name="album_liberado" 
-                      defaultChecked={aluno.album_liberado || false} 
-                    />
-                    <Label htmlFor="album_liberado" className="text-xs font-medium cursor-pointer">
-                      Liberar visualização
-                    </Label>
-                  </div>
-                  <div className="flex-1"></div>
-                  <Button size="sm" className="w-full h-8 text-xs mt-auto" disabled={updateLinksAluno.isPending}>
-                    {updateLinksAluno.isPending ? "Salvando..." : "Salvar Aprovação"}
-                  </Button>
-                </form>
-              </CardContent>
-            )}
-          </Card>
-        </div>
-      )}
-
-      {/* SEÇÃO DO CONTRATO E FINANCEIRO */}
-      <div className="mb-6 flex flex-wrap items-center gap-4">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <CreditCard className="size-5 text-gold" /> Contrato, Pacote & Parcelamento
-        </h2>
-
-        {!contrato ? (
-          <Dialog open={openCreateContrato} onOpenChange={setOpenCreateContrato}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="h-7 text-xs px-2.5 rounded-md gap-1.5">
-                <Plus className="size-3.5" /> Criar contrato & pacote
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-xl">
-              <DialogHeader>
-                <DialogTitle>Novo Contrato de Formatura</DialogTitle>
-              </DialogHeader>
-              <form
-                id="form-contrato"
-                className="space-y-3"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  criarContrato.mutate(new FormData(e.currentTarget));
-                }}
-              >
-                <Campo name="pacote" label="Pacote Contratado *" defaultValue="Pacote Completo (Foto + Álbum)" required />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Campo name="valor_total" label="Valor total (R$) *" type="number" step="0.01" defaultValue="4500" required />
-                  <Campo name="desconto" label="Desconto (R$)" type="number" step="0.01" defaultValue="0" />
-                  <Campo name="valor_entrada" label="Entrada (R$)" type="number" step="0.01" defaultValue="500" />
-                  <Campo name="num_parcelas" label="Nº de parcelas *" type="number" defaultValue="10" required />
-                  <Campo name="dia_vencimento" label="Dia de vencimento *" type="number" defaultValue="10" required />
-                  <Campo name="primeiro_vencimento" label="1º vencimento *" type="date" defaultValue={hoje} required />
-                  <div className="space-y-1.5">
-                    <Label htmlFor="forma_pagamento">Forma de pagamento</Label>
-                    <select
-                      id="forma_pagamento"
-                      name="forma_pagamento"
-                      defaultValue="boleto"
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                    >
-                      {FORMAS_PAGAMENTO.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </form>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setOpenCreateContrato(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" form="form-contrato" disabled={criarContrato.isPending}>
-                  {criarContrato.isPending ? "Gerando..." : "Gerar contrato e parcelas"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setOpenEditContrato(true)} className="h-7 text-xs px-2.5 rounded-md gap-1.5">
-              <Edit className="size-3.5" /> Editar Pacote / Contrato
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setOpenDeleteContrato(true)}
-              className="h-7 text-xs px-2.5 rounded-md gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 className="size-3.5" /> Excluir Contrato
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {!contrato && (
-        <Card className="shadow-card border-dashed p-10 text-center text-muted-foreground">
-          <FileText className="mx-auto size-10 opacity-30 mb-2" />
-          <p className="font-semibold text-foreground">Nenhum contrato cadastrado para este formando</p>
-          <p className="text-xs mt-1">Cadastre o pacote e gere o parcelamento clicando no botão acima.</p>
-        </Card>
-      )}
-
-      {contrato && (
+      {aluno?.status === "inativo" ? (
         <div className="space-y-6">
-          <div className="flex flex-wrap items-start gap-3">
-            <Resumo titulo="Valor do contrato" valor={brl(Number(contrato.valor_total))} icon={FileText} />
-            <Resumo titulo="Total parcelado" valor={brl(totalParcelas)} icon={CreditCard} />
-            <Resumo titulo="Recebido" valor={brl(totalPago)} icon={CheckCircle2} />
-            <Resumo titulo="Em atraso" valor={String(atrasadas.length)} destaque={atrasadas.length > 0} icon={AlertCircle} />
-          </div>
+          {/* CARD DE DADOS DO CANCELAMENTO E DISTRATO CONTRATUAL */}
+          <Card className="shadow-card border-amber-500/50 bg-card">
+            <CardHeader className="border-b bg-amber-500/10 dark:bg-amber-950/20 pb-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <CardTitle className="text-base text-amber-700 dark:text-amber-500 flex items-center gap-2">
+                  <FileX className="size-5" /> Dados do Cancelamento & Distrato Contratual
+                </CardTitle>
+                <Badge variant="destructive" className="bg-amber-600 hover:bg-amber-700">
+                  Cadastro Inativo
+                </Badge>
+              </div>
+              <CardDescription className="text-xs text-muted-foreground mt-1">
+                Motivo da inativação: <span className="font-semibold text-foreground">"{aluno.motivo_inativacao || "Não informado"}"</span>
+              </CardDescription>
+            </CardHeader>
 
-          {/* PARCELAS */}
+            <CardContent className="p-6 space-y-6">
+              {contrato ? (
+                <>
+                  {/* GRID DE RESUMO FINANCEIRO DO DISTRATO */}
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="p-4 rounded-xl border bg-muted/30 space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase font-medium">Valor do Contrato</p>
+                      <p className="text-lg font-bold">{brl(Number(contrato.valor_total))}</p>
+                      <p className="text-[11px] text-muted-foreground">Pacote: {contrato.pacote}</p>
+                    </div>
+
+                    <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-1">
+                      <p className="text-xs text-amber-700 dark:text-amber-400 uppercase font-medium">Multa de Quebra (30%)</p>
+                      <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                        {brl(multaRescisao)}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">30% do valor total do contrato</p>
+                    </div>
+
+                    <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/5 space-y-1">
+                      <p className="text-xs text-destructive uppercase font-medium">Boletos Cancelados ({boletosCanceladosCount})</p>
+                      <p className="text-lg font-bold text-destructive">
+                        {brl(custoCancelamentoBoletos)}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">R$ 5,00 por boleto cancelado</p>
+                    </div>
+
+                    <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-1">
+                      <p className="text-xs text-emerald-700 dark:text-emerald-400 uppercase font-medium">Pago no Caixa</p>
+                      <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                        {brl(totalPago)}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">Preservado no fluxo de caixa ({parcelasPagas.length} parc.)</p>
+                    </div>
+                  </div>
+
+                  {/* DEMONSTRATIVO FINANCEIRO DETALHADO DO FECHAMENTO */}
+                  <div className="rounded-xl border p-4 bg-muted/20 space-y-3">
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <Calculator className="size-4 text-gold" /> Demonstrativo de Fechamento / Rescisão
+                    </h3>
+                    <div className="space-y-2 text-xs divide-y divide-border/60">
+                      <div className="flex justify-between pt-1">
+                        <span className="text-muted-foreground">Valor da quebra de contrato (30% do contrato):</span>
+                        <span className="font-semibold">{brl(multaRescisao)}</span>
+                      </div>
+                      <div className="flex justify-between pt-2">
+                        <span className="text-muted-foreground">Custo de cancelamento de boletos ({boletosCanceladosCount} parcelas x R$ 5,00):</span>
+                        <span className="font-semibold">{brl(custoCancelamentoBoletos)}</span>
+                      </div>
+                      <div className="flex justify-between pt-2 font-medium">
+                        <span>Total de encargos rescisórios calculados:</span>
+                        <span className="text-amber-600 font-bold">{brl(totalEncargosRescisao)}</span>
+                      </div>
+                      <div className="flex justify-between pt-2">
+                        <span className="text-muted-foreground">Total de valores quitados mantidos no caixa:</span>
+                        <span className="text-emerald-600 font-bold">- {brl(totalPago)}</span>
+                      </div>
+                      <div className="flex justify-between pt-2 text-sm font-bold border-t border-border">
+                        <span>Resultado Final do Distrato:</span>
+                        <span className={saldoDistrato > 0 ? "text-destructive" : "text-emerald-600"}>
+                          {brl(Math.abs(saldoDistrato))}
+                          {saldoDistrato > 0 ? " (A receber do cliente)" : " (A restituir ao cliente)"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* HISTÓRICO DE PARCELAS PAGAS MANTIDAS NO CAIXA */}
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                      <CheckCircle2 className="size-3.5 text-emerald-600" />
+                      Boletos Quitados Mantidos no Fluxo de Caixa ({parcelasPagas.length})
+                    </h4>
+                    {parcelasPagas.length > 0 ? (
+                      <div className="space-y-2">
+                        {parcelasPagas.map((p) => (
+                          <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border bg-emerald-500/5 border-emerald-500/20 text-xs">
+                            <div>
+                              <span className="font-semibold">{p.numero === 0 ? "Entrada" : `Parcela ${p.numero}`}</span> · {brl(Number(p.valor))}
+                              <p className="text-[11px] text-muted-foreground">
+                                Pago em: {p.data_pagamento ? new Date(`${p.data_pagamento}T12:00:00`).toLocaleDateString("pt-BR") : "—"}
+                              </p>
+                            </div>
+                            <Badge className="bg-emerald-600">pago</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic py-2">Nenhum boleto pago antes do cancelamento.</p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">Nenhum contrato ativo encontrado para este formando.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* SEÇÃO DO CONTRATO */}
           <Card className="shadow-card">
             <CardHeader>
-              <CardTitle className="text-base flex items-center justify-between">
-                <span>Parcelas · {contrato.pacote} ({parcelas.length})</span>
-                <span className="text-xs text-muted-foreground font-normal">
-                  Clique para marcar como Pago ou Pendente
-                </span>
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="size-5 text-gold" /> Contrato de Prestação de Serviços
               </CardTitle>
+              <CardDescription className="text-xs">
+                Instrumento particular de trabalho arquivado.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {parcelas.map((p) => {
-                const pago = p.status === "pago";
-                const atrasada = !pago && p.vencimento < hoje;
-                return (
-                  <div
-                    key={p.id}
-                    className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors ${
-                      atrasada
-                        ? "border-destructive/60 bg-destructive/10 text-destructive font-medium"
-                        : "border-border hover:bg-muted/40"
-                    }`}
-                  >
-                    <div>
-                      <p className={`font-medium ${atrasada ? "text-destructive font-bold" : ""}`}>
-                        {p.numero === 0 ? "Entrada" : `Parcela ${p.numero}`} · {brl(Number(p.valor))}
-                      </p>
-                      <p className={`text-xs ${atrasada ? "text-destructive/80 font-medium" : "text-muted-foreground"}`}>
-                        Vencimento: {new Date(`${p.vencimento}T12:00:00`).toLocaleDateString("pt-BR")}
-                        {p.data_pagamento && ` · Pago em: ${new Date(`${p.data_pagamento}T12:00:00`).toLocaleDateString("pt-BR")}`}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge
-                        variant={pago ? "default" : atrasada ? "destructive" : "secondary"}
-                        className={pago ? "bg-emerald-600 hover:bg-emerald-700" : atrasada ? "bg-destructive text-destructive-foreground font-bold" : ""}
-                      >
-                        {pago ? "pago" : atrasada ? "atrasada" : "pendente"}
-                      </Badge>
-                    </div>
-                  </div>
-                );
-              })}
+            <CardContent className="space-y-3">
+              {contrato && (
+                <div className="flex flex-wrap gap-2">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1.5">
+                        <Eye className="size-4" /> Visualizar / Editar Cláusulas
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+                      <DialogHeader>
+                        <DialogTitle>Contrato</DialogTitle>
+                      </DialogHeader>
+                      <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-sm mt-2">
+                        <Textarea
+                          id="texto-contrato-page-inativo"
+                          value={textoContrato}
+                          onChange={(e) => setTextoContrato(e.target.value)}
+                          className="min-h-[340px] font-mono text-xs leading-relaxed"
+                        />
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={salvarContratoTexto.isPending}
+                          onClick={() => salvarContratoTexto.mutate()}
+                          className="gap-1.5"
+                        >
+                          <Save className="size-4" /> Salvar Alterações
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Button size="sm" className="gap-1.5" onClick={handleBaixarContratoPdf}>
+                    <FileDown className="size-4" /> Baixar PDF do Contrato
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
+      ) : (
+        <>
+          {!aluno?.user_id && (
+            <Card className="mb-6 shadow-card border-gold/40 bg-gold/5">
+              <CardContent className="pt-6 text-sm text-foreground flex items-center gap-3">
+                <KeyRound className="size-5 text-gold shrink-0" />
+                <div>
+                  <strong>Acesso do {contratanteLabel}:</strong> O acesso é liberado usando o <strong>CPF como login</strong> e o <strong>CPF como senha inicial</strong>.
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* LINHA DE DADOS */}
+          {aluno && (
+            <div className="mb-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-start">
+              {/* Card 1: Dados do Contratante / Formando */}
+              <Card className="shadow-card">
+                <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                    <User className="size-4 text-gold shrink-0" />
+                    Dados do {contratanteLabel}
+                  </CardTitle>
+                  <Button
+                    variant={!showDados ? "default" : "secondary"}
+                    size="sm"
+                    className="h-7 text-xs px-2.5 rounded-md"
+                    onClick={() => setShowDados(!showDados)}
+                  >
+                    {showDados ? "Ocultar" : "Visualizar"}
+                  </Button>
+                </CardHeader>
+                {showDados && (
+                  <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
+                    <Info label="Nome Completo" value={aluno.nome_completo} />
+                    <Info label="CPF" value={aluno.cpf} />
+                    {aluno.rg && <Info label="RG" value={aluno.rg} />}
+                    <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
+                    <Info label="WhatsApp" value={aluno.whatsapp} />
+                    <Info label="E-mail" value={aluno.email} />
+                    <Info label="Endereço" value={aluno.endereco} />
+                    <Info label="Cidade" value={aluno.cidade} />
+                    {aluno.data_nascimento && (
+                      <Info label="Data Nasc." value={new Date(aluno.data_nascimento + "T12:00:00").toLocaleDateString("pt-BR")} />
+                    )}
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* Card 2: Dados do Ensaio / Evento / Turma */}
+              <Card className="shadow-card">
+                <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                    <GraduationCap className="size-4 text-gold shrink-0" />
+                    Dados do {eventoLabel}
+                  </CardTitle>
+                  <Button
+                    variant={!showTurma ? "default" : "secondary"}
+                    size="sm"
+                    className="h-7 text-xs px-2.5 rounded-md"
+                    onClick={() => setShowTurma(!showTurma)}
+                  >
+                    {showTurma ? "Ocultar" : "Visualizar"}
+                  </Button>
+                  <Badge variant="secondary" className="text-[11px] py-0 px-1.5 ml-auto">
+                    {aluno.status ?? "Ativo"}
+                  </Badge>
+                </CardHeader>
+                {showTurma && (
+                  <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
+                    <Info label={eventoLabel} value={aluno.turmas?.nome} />
+                    <Info label={tipoDemandaLabel} value={aluno.turmas?.curso} />
+                    <Info label={localLabel} value={aluno.turmas?.faculdade} />
+                    {aluno.turmas?.semestre && <Info label={dataLabel} value={aluno.turmas?.semestre} />}
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* Card 3: Pacote Escolhido */}
+              <Card className="shadow-card">
+                <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                    <Package className="size-4 text-gold shrink-0" />
+                    Pacote Escolhido
+                  </CardTitle>
+                  <Button
+                    variant={!showPacote ? "default" : "secondary"}
+                    size="sm"
+                    className="h-7 text-xs px-2.5 rounded-md"
+                    onClick={() => setShowPacote(!showPacote)}
+                  >
+                    {showPacote ? "Ocultar" : "Visualizar"}
+                  </Button>
+                </CardHeader>
+                {showPacote && (
+                  <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
+                    {contrato ? (
+                      <>
+                        <Info label="Pacote" value={contrato.pacote} />
+                        <Info label="Valor Total" value={brl(Number(contrato.valor_total))} />
+                        {Number(contrato.desconto) > 0 && <Info label="Desconto" value={brl(Number(contrato.desconto))} />}
+                        {Number(contrato.valor_entrada) > 0 && <Info label="Entrada" value={brl(Number(contrato.valor_entrada))} />}
+                        <Info label="Condição" value={`${contrato.num_parcelas}x no ${contrato.forma_pagamento || "boleto"}`} />
+                        <Info label="Dia Vencimento" value={`Todo dia ${contrato.dia_vencimento || 10}`} />
+                        {aluno?.turmas?.semestre && <Info label="Semestre" value={aluno.turmas.semestre} />}
+                      </>
+                    ) : (
+                      <p className="text-muted-foreground text-xs py-2">Nenhum pacote contratado no momento.</p>
+                    )}
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* Card 4: Contrato */}
+              <Card className="shadow-card">
+                <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                    <FileText className="size-4 text-gold shrink-0" />
+                    Contrato
+                  </CardTitle>
+                  <Button
+                    variant={!showContrato ? "default" : "secondary"}
+                    size="sm"
+                    className="h-7 text-xs px-2.5 rounded-md"
+                    onClick={() => setShowContrato(!showContrato)}
+                  >
+                    {showContrato ? "Ocultar" : "Visualizar"}
+                  </Button>
+                </CardHeader>
+                {showContrato && (
+                  <CardContent className="p-4 pt-0 space-y-2 text-xs border-t border-border/40 mt-1 pt-2.5">
+                    {contrato ? (
+                      <>
+                        <p className="text-muted-foreground text-xs">
+                          Documento de <span className="font-medium text-foreground">{contrato.pacote}</span>
+                        </p>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button variant="outline" size="sm" className="h-7 text-xs px-2.5 gap-1">
+                                <Eye className="size-3.5" /> Ver / Editar
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+                              <DialogHeader>
+                                <DialogTitle>Contrato</DialogTitle>
+                              </DialogHeader>
+                              <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-sm mt-2">
+                                <div className="flex items-center justify-between">
+                                  <Label htmlFor="texto-contrato-page" className="font-semibold">Cláusulas (editáveis)</Label>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-muted-foreground underline hover:text-foreground"
+                                    onClick={() => setTextoContrato(CLAUSULAS_PADRAO)}
+                                  >
+                                    restaurar modelo padrão
+                                  </button>
+                                </div>
+                                <Textarea
+                                  id="texto-contrato-page"
+                                  value={textoContrato}
+                                  onChange={(e) => setTextoContrato(e.target.value)}
+                                  className="min-h-[340px] font-mono text-xs leading-relaxed"
+                                />
+                              </div>
+                              <DialogFooter>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={salvarContratoTexto.isPending}
+                                  onClick={() => salvarContratoTexto.mutate()}
+                                  className="gap-1.5"
+                                >
+                                  <Save className="size-4" /> Salvar Alterações
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs px-2.5 gap-1"
+                            onClick={handleBaixarContratoPdf}
+                          >
+                            <FileDown className="size-3.5" /> Baixar PDF
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-muted-foreground text-xs py-2">Nenhum contrato gerado ainda.</p>
+                    )}
+                  </CardContent>
+                )}
+              </Card>
+            </div>
+          )}
+
+          {/* LINHA DE SELEÇÃO */}
+          {aluno && (
+            <div className="mb-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-start">
+              {/* Card 1: Seleção */}
+              <Card className="shadow-card h-full flex flex-col">
+                <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                    <Camera className="size-4 text-gold shrink-0" />
+                    SELEÇÃO
+                  </CardTitle>
+                  <Button
+                    variant={!showSel1 ? "default" : "secondary"}
+                    size="sm"
+                    className="h-7 text-xs px-2.5 rounded-md ml-auto"
+                    onClick={() => setShowSel1(!showSel1)}
+                  >
+                    {showSel1 ? "Ocultar" : "Visualizar"}
+                  </Button>
+                </CardHeader>
+                {showSel1 && (
+                  <CardContent className="p-4 pt-0 text-xs text-muted-foreground border-t border-border/40 mt-1 pt-2.5 flex-1 flex flex-col">
+                    <p className="mb-3">Plataforma YouFocus. O Formando acessa com o mesmo CPF.</p>
+                    <Button asChild variant="secondary" size="sm" className="w-full mt-auto">
+                      <a href={SELPICS_URL} target="_blank" rel="noopener noreferrer">
+                        Acessar Link <ExternalLink className="size-3.5 ml-1" />
+                      </a>
+                    </Button>
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* Card 2: Minhas Fotos Selecionadas */}
+              <Card className="shadow-card h-full flex flex-col">
+                <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                    <CheckCircle2 className="size-4 text-gold shrink-0" />
+                    MINHAS FOTOS SELECIONADAS
+                  </CardTitle>
+                  <Button
+                    variant={!showSel2 ? "default" : "secondary"}
+                    size="sm"
+                    className="h-7 text-xs px-2.5 rounded-md ml-auto"
+                    onClick={() => setShowSel2(!showSel2)}
+                  >
+                    {showSel2 ? "Ocultar" : "Visualizar"}
+                  </Button>
+                </CardHeader>
+                {showSel2 && (
+                  <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1">
+                    <form 
+                      className="space-y-3 flex flex-col h-full"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const form = new FormData(e.currentTarget);
+                        const prazoStr = form.get("prazo_fotos_selecionadas") as string;
+                        updateLinksAluno.mutate({
+                          link_fotos_selecionadas: form.get("link_fotos_selecionadas") as string || null,
+                          prazo_fotos_selecionadas: prazoStr ? parseInt(prazoStr, 10) : null,
+                          fotos_liberadas: form.get("fotos_liberadas") === "on",
+                        });
+                      }}
+                    >
+                      <div className="space-y-1">
+                        <Label className="text-xs">Link de Hospedagem</Label>
+                        <Input 
+                          name="link_fotos_selecionadas" 
+                          className="h-8 text-xs" 
+                          placeholder="https://..." 
+                          defaultValue={aluno.link_fotos_selecionadas || ""} 
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Prazo de Vencimento (Dias)</Label>
+                        <Input 
+                          name="prazo_fotos_selecionadas" 
+                          type="number" 
+                          className="h-8 text-xs" 
+                          placeholder="Ex: 150"
+                          defaultValue={aluno.prazo_fotos_selecionadas || ""} 
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2 pt-1 pb-1">
+                        <Switch 
+                          id="fotos_liberadas" 
+                          name="fotos_liberadas" 
+                          defaultChecked={aluno.fotos_liberadas || false} 
+                        />
+                        <Label htmlFor="fotos_liberadas" className="text-xs font-medium cursor-pointer">
+                          Liberar visualização
+                        </Label>
+                      </div>
+                      <div className="flex-1"></div>
+                      <Button size="sm" className="w-full h-8 text-xs mt-3" disabled={updateLinksAluno.isPending}>
+                        {updateLinksAluno.isPending ? "Salvando..." : "Salvar Configurações"}
+                      </Button>
+                    </form>
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* Card 3: Aprovação de Álbum */}
+              <Card className="shadow-card h-full flex flex-col">
+                <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+                    <FileText className="size-4 text-gold shrink-0" />
+                    APROVAÇÃO DE ÁLBUM
+                  </CardTitle>
+                  <Button
+                    variant={!showSel3 ? "default" : "secondary"}
+                    size="sm"
+                    className="h-7 text-xs px-2.5 rounded-md ml-auto"
+                    onClick={() => setShowSel3(!showSel3)}
+                  >
+                    {showSel3 ? "Ocultar" : "Visualizar"}
+                  </Button>
+                </CardHeader>
+                {showSel3 && (
+                  <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1">
+                    <form 
+                      className="space-y-3 h-full flex flex-col"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const form = new FormData(e.currentTarget);
+                        updateLinksAluno.mutate({
+                          link_aprovacao_album: form.get("link_aprovacao_album") as string || null,
+                          album_liberado: form.get("album_liberado") === "on",
+                        });
+                      }}
+                    >
+                      <div className="space-y-1">
+                        <Label className="text-xs">Link do Álbum</Label>
+                        <Input 
+                          name="link_aprovacao_album" 
+                          className="h-8 text-xs" 
+                          placeholder="https://..." 
+                          defaultValue={aluno.link_aprovacao_album || ""} 
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2 pt-1 pb-1">
+                        <Switch 
+                          id="album_liberado" 
+                          name="album_liberado" 
+                          defaultChecked={aluno.album_liberado || false} 
+                        />
+                        <Label htmlFor="album_liberado" className="text-xs font-medium cursor-pointer">
+                          Liberar visualização
+                        </Label>
+                      </div>
+                      <div className="flex-1"></div>
+                      <Button size="sm" className="w-full h-8 text-xs mt-auto" disabled={updateLinksAluno.isPending}>
+                        {updateLinksAluno.isPending ? "Salvando..." : "Salvar Aprovação"}
+                      </Button>
+                    </form>
+                  </CardContent>
+                )}
+              </Card>
+            </div>
+          )}
+
+          {/* SEÇÃO DO CONTRATO E FINANCEIRO */}
+          <div className="mb-6 flex flex-wrap items-center gap-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <CreditCard className="size-5 text-gold" /> Contrato, Pacote & Parcelamento
+            </h2>
+
+            {!contrato ? (
+              <Dialog open={openCreateContrato} onOpenChange={setOpenCreateContrato}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 text-xs px-2.5 rounded-md gap-1.5">
+                    <Plus className="size-3.5" /> Criar contrato & pacote
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-xl">
+                  <DialogHeader>
+                    <DialogTitle>Novo Contrato de Formatura</DialogTitle>
+                  </DialogHeader>
+                  <form
+                    id="form-contrato"
+                    className="space-y-3"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      criarContrato.mutate(new FormData(e.currentTarget));
+                    }}
+                  >
+                    <Campo name="pacote" label="Pacote Contratado *" defaultValue="Pacote Completo (Foto + Álbum)" required />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Campo name="valor_total" label="Valor total (R$) *" type="number" step="0.01" defaultValue="4500" required />
+                      <Campo name="desconto" label="Desconto (R$)" type="number" step="0.01" defaultValue="0" />
+                      <Campo name="valor_entrada" label="Entrada (R$)" type="number" step="0.01" defaultValue="500" />
+                      <Campo name="num_parcelas" label="Nº de parcelas *" type="number" defaultValue="10" required />
+                      <Campo name="dia_vencimento" label="Dia de vencimento *" type="number" defaultValue="10" required />
+                      <Campo name="primeiro_vencimento" label="1º vencimento *" type="date" defaultValue={hoje} required />
+                      <div className="space-y-1.5">
+                        <Label htmlFor="forma_pagamento">Forma de pagamento</Label>
+                        <select
+                          id="forma_pagamento"
+                          name="forma_pagamento"
+                          defaultValue="boleto"
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {FORMAS_PAGAMENTO.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </form>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setOpenCreateContrato(false)}>
+                      Cancelar
+                    </Button>
+                    <Button type="submit" form="form-contrato" disabled={criarContrato.isPending}>
+                      {criarContrato.isPending ? "Gerando..." : "Gerar contrato e parcelas"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setOpenEditContrato(true)} className="h-7 text-xs px-2.5 rounded-md gap-1.5">
+                  <Edit className="size-3.5" /> Editar Pacote / Contrato
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setOpenDeleteContrato(true)}
+                  className="h-7 text-xs px-2.5 rounded-md gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="size-3.5" /> Excluir Contrato
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {!contrato && (
+            <Card className="shadow-card border-dashed p-10 text-center text-muted-foreground">
+              <FileText className="mx-auto size-10 opacity-30 mb-2" />
+              <p className="font-semibold text-foreground">Nenhum contrato cadastrado para este formando</p>
+              <p className="text-xs mt-1">Cadastre o pacote e gere o parcelamento clicando no botão acima.</p>
+            </Card>
+          )}
+
+          {contrato && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-start gap-3">
+                <Resumo titulo="Valor do contrato" valor={brl(Number(contrato.valor_total))} icon={FileText} />
+                <Resumo titulo="Total parcelado" valor={brl(totalParcelas)} icon={CreditCard} />
+                <Resumo titulo="Recebido" valor={brl(totalPago)} icon={CheckCircle2} />
+                <Resumo titulo="Em atraso" valor={String(atrasadas.length)} destaque={atrasadas.length > 0} icon={AlertCircle} />
+              </div>
+
+              {/* PARCELAS */}
+              <Card className="shadow-card">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center justify-between">
+                    <span>Parcelas · {contrato.pacote} ({parcelas.length})</span>
+                    <span className="text-xs text-muted-foreground font-normal">
+                      Clique para marcar como Pago ou Pendente
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {parcelas.map((p) => {
+                    const pago = p.status === "pago";
+                    const atrasada = !pago && p.vencimento < hoje;
+                    return (
+                      <div
+                        key={p.id}
+                        className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                          atrasada
+                            ? "border-destructive/60 bg-destructive/10 text-destructive font-medium"
+                            : "border-border hover:bg-muted/40"
+                        }`}
+                      >
+                        <div>
+                          <p className={`font-medium ${atrasada ? "text-destructive font-bold" : ""}`}>
+                            {p.numero === 0 ? "Entrada" : `Parcela ${p.numero}`} · {brl(Number(p.valor))}
+                          </p>
+                          <p className={`text-xs ${atrasada ? "text-destructive/80 font-medium" : "text-muted-foreground"}`}>
+                            Vencimento: {new Date(`${p.vencimento}T12:00:00`).toLocaleDateString("pt-BR")}
+                            {p.data_pagamento && ` · Pago em: ${new Date(`${p.data_pagamento}T12:00:00`).toLocaleDateString("pt-BR")}`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <Badge
+                            variant={pago ? "default" : atrasada ? "destructive" : "secondary"}
+                            className={pago ? "bg-emerald-600 hover:bg-emerald-700" : atrasada ? "bg-destructive text-destructive-foreground font-bold" : ""}
+                          >
+                            {pago ? "pago" : atrasada ? "atrasada" : "pendente"}
+                          </Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </>
       )}
 
       {/* MODAL: EDITAR DADOS DO CONTRATANTE / FORMANDO */}
