@@ -2,858 +2,523 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Calendar as CalendarIcon,
+  CalendarDays,
   Plus,
-  Search,
-  MapPin,
+  Pencil,
+  Trash2,
   Building2,
-  Clock,
-  Filter,
+  MapPin,
+  User,
   ChevronLeft,
   ChevronRight,
-  Edit,
-  Trash2,
-  AlertCircle,
-  Briefcase,
-  List,
-  CalendarDays,
+  X,
+  Camera,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/app/AppShell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authenticated/agenda")({
   ssr: false,
   head: () => ({
-    meta: [
-      { title: "Agenda de Eventos & Trabalhos | JM Formaturas" },
-      {
-        name: "description",
-        content: "Agenda interligada de agendamentos e eventos da JM Formaturas e empresas parceiras.",
-      },
-    ],
+    meta: [{ title: "Agenda de Eventos | JM Formaturas" }],
   }),
   component: AgendaPage,
 });
 
-export interface AgendaEvento {
+// ─── tipos ────────────────────────────────────────────────────────────────────
+interface AgendaEvento {
   id: string;
-  titulo: string;
+  descricao: string;
   empresa_tipo: "jm" | "outra";
   empresa_nome: string;
-  local_evento: string | null;
-  cidade: string | null;
-  data_evento: string; // YYYY-MM-DD
-  horario_inicio: string | null;
-  horario_fim: string | null;
-  status: "confirmado" | "pendente" | "concluido" | "cancelado";
-  observacoes: string | null;
+  local_evento: string;
+  cidade: string;
+  fotografo: string;
+  data_evento: string;
   created_at?: string;
 }
 
-const MESES = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-];
-
-const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-
-function formatLocalYMD(year: number, monthIndex: number, day: number): string {
-  const d = new Date(year, monthIndex, day);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
+interface FormState {
+  descricao: string;
+  empresa_tipo: "jm" | "outra";
+  empresa_nome: string;
+  local_evento: string;
+  cidade: string;
+  fotografo: string;
+  data_evento: string;
 }
 
+const FORM_VAZIO: FormState = {
+  descricao: "",
+  empresa_tipo: "jm",
+  empresa_nome: "JM Formaturas & Eventos",
+  local_evento: "",
+  cidade: "",
+  fotografo: "",
+  data_evento: new Date().toISOString().slice(0, 10),
+};
+
+const MESES = [
+  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
+];
+const DIAS_SEM = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+
+function localYMD(year: number, month: number, day: number) {
+  const d = new Date(year, month, day);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+// ─── componente principal ──────────────────────────────────────────────────────
 function AgendaPage() {
-  const queryClient = useQueryClient();
-  const hoje = new Date();
-  
-  const [dataAtual, setDataAtual] = useState(new Date());
-  const [visao, setVisao] = useState<"calendario" | "lista">("calendario");
-  const [filtroEmpresa, setFiltroEmpresa] = useState<"todos" | "jm" | "outra">("todos");
-  const [searchQuery, setSearchQuery] = useState("");
+  const qc = useQueryClient();
+  const hoje = localYMD(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
 
-  const [openModalNovo, setOpenModalNovo] = useState(false);
-  const [editingEvento, setEditingEvento] = useState<AgendaEvento | null>(null);
-  const [deletingEvento, setDeletingEvento] = useState<AgendaEvento | null>(null);
-  const [selectedDateForNew, setSelectedDateForNew] = useState<string | null>(null);
+  // estado de navegação de mês
+  const [ano, setAno] = useState(new Date().getFullYear());
+  const [mes, setMes] = useState(new Date().getMonth()); // 0-based
 
-  // Form states
-  const [formTipoEmpresa, setFormTipoEmpresa] = useState<"jm" | "outra">("jm");
+  // modal
+  const [modalAberto, setModalAberto] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(FORM_VAZIO);
 
-  // Buscar eventos compartilhados do Supabase
-  const { data: eventos = [], isLoading } = useQuery({
-    queryKey: ["agenda-eventos"],
+  // confirmação exclusão
+  const [deletandoId, setDeletandoId] = useState<string | null>(null);
+
+  // ── query ──
+  const { data: eventos = [], isLoading } = useQuery<AgendaEvento[]>({
+    queryKey: ["agenda"],
     queryFn: async () => {
-      try {
-        const { data, error } = await (supabase.from as any)("agenda_eventos")
-          .select("*")
-          .order("data_evento", { ascending: true });
-
-        if (error) {
-          console.warn("Tabela agenda_eventos ainda não configurada no DB remoto:", error.message);
-          return [];
-        }
-        return (data ?? []) as AgendaEvento[];
-      } catch (err) {
-        console.warn("Exceção ao buscar agenda_eventos:", err);
-        return [];
-      }
+      const res = await (supabase.from as any)("agenda_eventos")
+        .select("*")
+        .order("data_evento", { ascending: true });
+      if (res.error) { console.warn(res.error.message); return []; }
+      return res.data ?? [];
     },
   });
 
-  // Salvar / Criar / Editar Evento Mutation
-  const salvarEvento = useMutation({
-    mutationFn: async (formData: FormData) => {
-      const titulo = (formData.get("titulo") as string)?.trim();
-      const empresa_tipo = (formData.get("empresa_tipo") as "jm" | "outra") || "jm";
-      let empresa_nome = (formData.get("empresa_nome") as string)?.trim();
-      if (empresa_tipo === "jm" || !empresa_nome) {
-        empresa_nome = "JM Formaturas & Eventos";
-      }
-      const local_evento = (formData.get("local_evento") as string)?.trim() || null;
-      const cidade = (formData.get("cidade") as string)?.trim() || null;
-      const data_evento = (formData.get("data_evento") as string);
-      const horario_inicio = (formData.get("horario_inicio") as string) || null;
-      const horario_fim = (formData.get("horario_fim") as string) || null;
-      const status = (formData.get("status") as any) || "confirmado";
-      const observacoes = (formData.get("observacoes") as string)?.trim() || null;
-
-      if (!titulo) throw new Error("Informe o nome do evento.");
-      if (!data_evento) throw new Error("Informe a data do evento.");
-
+  // ── mutação salvar ──
+  const salvar = useMutation({
+    mutationFn: async (f: FormState) => {
       const payload = {
-        titulo,
-        empresa_tipo,
-        empresa_nome,
-        local_evento,
-        cidade,
-        data_evento,
-        horario_inicio,
-        horario_fim,
-        status,
-        observacoes,
+        descricao: f.descricao.trim(),
+        empresa_tipo: f.empresa_tipo,
+        empresa_nome: f.empresa_tipo === "jm" ? "JM Formaturas & Eventos" : f.empresa_nome.trim(),
+        local_evento: f.local_evento.trim(),
+        cidade: f.cidade.trim(),
+        fotografo: f.fotografo.trim(),
+        data_evento: f.data_evento,
       };
-
-      if (editingEvento) {
-        const { error } = await supabase
-          .from("agenda_eventos")
-          .update(payload)
-          .eq("id", editingEvento.id);
+      if (editId) {
+        const { error } = await (supabase.from as any)("agenda_eventos").update(payload).eq("id", editId);
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from("agenda_eventos")
-          .insert([payload]);
+        const { error } = await (supabase.from as any)("agenda_eventos").insert([payload]);
         if (error) throw error;
       }
     },
     onSuccess: () => {
-      toast.success(editingEvento ? "Evento atualizado na agenda!" : "Novo evento agendado com sucesso!");
-      setOpenModalNovo(false);
-      setEditingEvento(null);
-      setSelectedDateForNew(null);
-      void queryClient.invalidateQueries({ queryKey: ["agenda-eventos"] });
+      toast.success(editId ? "Evento atualizado!" : "Evento adicionado à agenda!");
+      setModalAberto(false);
+      void qc.invalidateQueries({ queryKey: ["agenda"] });
     },
-    onError: (err) => {
-      toast.error((err as Error).message || "Erro ao salvar evento na agenda.");
-    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao salvar evento."),
   });
 
-  // Excluir Evento Mutation
-  const excluirEvento = useMutation({
+  // ── mutação excluir ──
+  const excluir = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("agenda_eventos").delete().eq("id", id);
+      const { error } = await (supabase.from as any)("agenda_eventos").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Evento removido da agenda.");
-      setDeletingEvento(null);
-      void queryClient.invalidateQueries({ queryKey: ["agenda-eventos"] });
+      toast.success("Evento removido.");
+      setDeletandoId(null);
+      void qc.invalidateQueries({ queryKey: ["agenda"] });
     },
-    onError: (err) => {
-      toast.error("Erro ao excluir evento: " + (err as Error).message);
-    },
+    onError: (e: any) => toast.error(e.message ?? "Erro ao excluir."),
   });
 
-  // Navegação de mês
-  const mesAtualNome = MESES[dataAtual.getMonth()];
-  const anoAtual = dataAtual.getFullYear();
+  // ── navegação de mês ──
+  const irAnterior = () => { if (mes === 0) { setMes(11); setAno(a => a-1); } else setMes(m => m-1); };
+  const irProximo  = () => { if (mes === 11) { setMes(0);  setAno(a => a+1); } else setMes(m => m+1); };
+  const irHoje     = () => { setAno(new Date().getFullYear()); setMes(new Date().getMonth()); };
 
-  const proximoMes = () => {
-    setDataAtual(new Date(dataAtual.getFullYear(), dataAtual.getMonth() + 1, 1));
+  // ── grade do calendário ──
+  const grade = useMemo(() => {
+    const primeiroDia = new Date(ano, mes, 1).getDay();
+    const ultimoDia   = new Date(ano, mes+1, 0).getDate();
+    const ultAnterior = new Date(ano, mes, 0).getDate();
+    const cells: { data: string; outroMes: boolean; dia: number }[] = [];
+
+    for (let i = primeiroDia-1; i >= 0; i--)
+      cells.push({ dia: ultAnterior-i, outroMes: true,  data: localYMD(ano, mes-1, ultAnterior-i) });
+    for (let d = 1; d <= ultimoDia; d++)
+      cells.push({ dia: d,             outroMes: false, data: localYMD(ano, mes,   d) });
+    const faltam = (cells.length <= 35 ? 35 : 42) - cells.length;
+    for (let i = 1; i <= faltam; i++)
+      cells.push({ dia: i,             outroMes: true,  data: localYMD(ano, mes+1, i) });
+    return cells;
+  }, [ano, mes]);
+
+  // ── eventos indexados por data ──
+  const porData = useMemo(() => {
+    const m: Record<string, AgendaEvento[]> = {};
+    for (const ev of eventos) {
+      if (!m[ev.data_evento]) m[ev.data_evento] = [];
+      m[ev.data_evento].push(ev);
+    }
+    return m;
+  }, [eventos]);
+
+  // ── eventos do mês corrente (lista) ──
+  const eventosMes = useMemo(() => {
+    const pref = `${ano}-${String(mes+1).padStart(2,"0")}`;
+    return eventos.filter(e => e.data_evento?.startsWith(pref));
+  }, [eventos, ano, mes]);
+
+  // ── abrir modal ──
+  const abrirNovo = (data?: string) => {
+    setEditId(null);
+    setForm({ ...FORM_VAZIO, data_evento: data ?? hoje });
+    setModalAberto(true);
   };
 
-  const mesAnterior = () => {
-    setDataAtual(new Date(dataAtual.getFullYear(), dataAtual.getMonth() - 1, 1));
-  };
-
-  const irParaHoje = () => {
-    setDataAtual(new Date());
-  };
-
-  // Filtragem dos eventos
-  const eventosFiltrados = useMemo(() => {
-    return eventos.filter((ev) => {
-      // Filtro de empresa
-      if (filtroEmpresa !== "todos" && ev.empresa_tipo !== filtroEmpresa) {
-        return false;
-      }
-
-      // Filtro de busca textual
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchTitulo = ev.titulo?.toLowerCase().includes(q) ?? false;
-        const matchEmpresa = ev.empresa_nome?.toLowerCase().includes(q) ?? false;
-        const matchLocal = ev.local_evento?.toLowerCase().includes(q) ?? false;
-        const matchCidade = ev.cidade?.toLowerCase().includes(q) ?? false;
-        const matchData = ev.data_evento?.includes(q) ?? false;
-        return matchTitulo || matchEmpresa || matchLocal || matchCidade || matchData;
-      }
-
-      return true;
+  const abrirEditar = (ev: AgendaEvento) => {
+    setEditId(ev.id);
+    setForm({
+      descricao:    ev.descricao,
+      empresa_tipo: ev.empresa_tipo,
+      empresa_nome: ev.empresa_nome,
+      local_evento: ev.local_evento ?? "",
+      cidade:       ev.cidade ?? "",
+      fotografo:    ev.fotografo ?? "",
+      data_evento:  ev.data_evento,
     });
-  }, [eventos, filtroEmpresa, searchQuery]);
-
-  // Dias do calendário para o mês selecionado
-  const diasCalendario = useMemo(() => {
-    const ano = dataAtual.getFullYear();
-    const mes = dataAtual.getMonth();
-
-    const primeiroDiaMes = new Date(ano, mes, 1);
-    const diaSemanaInicio = primeiroDiaMes.getDay(); // 0 = Domingo
-    const ultimoDiaMes = new Date(ano, mes + 1, 0).getDate();
-
-    const dias = [];
-
-    // Preencher dias do mês anterior para completar a primeira semana
-    const diaMesAnterior = new Date(ano, mes, 0).getDate();
-    for (let i = diaSemanaInicio - 1; i >= 0; i--) {
-      const dataStr = formatLocalYMD(ano, mes - 1, diaMesAnterior - i);
-      dias.push({
-        dia: diaMesAnterior - i,
-        outroMes: true,
-        dataStr,
-      });
-    }
-
-    // Dias do mês atual
-    for (let d = 1; d <= ultimoDiaMes; d++) {
-      const dataStr = formatLocalYMD(ano, mes, d);
-      dias.push({
-        dia: d,
-        outroMes: false,
-        dataStr,
-      });
-    }
-
-    // Preencher dias do próximo mês para completar 35 ou 42 slots
-    const slotsTotais = dias.length > 35 ? 42 : 35;
-    const faltam = slotsTotais - dias.length;
-    for (let i = 1; i <= faltam; i++) {
-      const dataStr = formatLocalYMD(ano, mes + 1, i);
-      dias.push({
-        dia: i,
-        outroMes: true,
-        dataStr,
-      });
-    }
-
-    return dias;
-  }, [dataAtual]);
-
-  // Mapear eventos por data YYYY-MM-DD
-  const eventosPorData = useMemo(() => {
-    const map: Record<string, AgendaEvento[]> = {};
-    for (const ev of eventosFiltrados) {
-      const dataEv = ev.data_evento || "sem-data";
-      if (!map[dataEv]) {
-        map[dataEv] = [];
-      }
-      map[dataEv].push(ev);
-    }
-    return map;
-  }, [eventosFiltrados]);
-
-  // Métricas do mês
-  const metricasMes = useMemo(() => {
-    const mm = String(dataAtual.getMonth() + 1).padStart(2, "0");
-    const prefixo = `${anoAtual}-${mm}`;
-
-    const doMes = eventos.filter((e) => e.data_evento?.startsWith(prefixo));
-    const jmCount = doMes.filter((e) => e.empresa_tipo === "jm").length;
-    const outraCount = doMes.filter((e) => e.empresa_tipo === "outra").length;
-
-    return {
-      totalMes: doMes.length,
-      jmCount,
-      outraCount,
-    };
-  }, [eventos, dataAtual, anoAtual]);
-
-  const abrirNovoParaData = (dataStr: string) => {
-    setSelectedDateForNew(dataStr);
-    setEditingEvento(null);
-    setFormTipoEmpresa("jm");
-    setOpenModalNovo(true);
+    setModalAberto(true);
   };
 
-  const abrirEdicao = (ev: AgendaEvento) => {
-    setEditingEvento(ev);
-    setFormTipoEmpresa(ev.empresa_tipo);
-    setOpenModalNovo(true);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.descricao.trim())    { toast.error("Informe a descrição do evento."); return; }
+    if (!form.data_evento)         { toast.error("Informe a data do evento."); return; }
+    if (!form.fotografo.trim())    { toast.error("Informe o nome do fotógrafo."); return; }
+    if (!form.local_evento.trim()) { toast.error("Informe o local do evento."); return; }
+    if (!form.cidade.trim())       { toast.error("Informe a cidade."); return; }
+    if (form.empresa_tipo === "outra" && !form.empresa_nome.trim()) {
+      toast.error("Informe o nome da empresa contratante."); return;
+    }
+    salvar.mutate(form);
   };
 
+  const set = (k: keyof FormState, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  // ─── render ────────────────────────────────────────────────────────────────
   return (
     <AppShell>
-      {/* CABEÇALHO DA AGENDA */}
+      {/* cabeçalho */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <CalendarDays className="size-6 text-gold" />
-              Agenda de Eventos
-            </h1>
-            <Badge variant="outline" className="border-gold/50 text-gold bg-gold/5">
-              Compartilhada
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Agendamentos interligados entre administradores. Eventos da JM Formaturas e terceirizados.
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <CalendarDays className="size-6 text-gold" />
+            Agenda de Eventos
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Agenda compartilhada entre fotógrafos/administradores em tempo real.
           </p>
         </div>
+        <button
+          onClick={() => abrirNovo()}
+          className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow hover:bg-brand/90 dark:bg-gold dark:text-brand dark:hover:bg-gold/90"
+        >
+          <Plus className="size-4" /> Novo Evento
+        </button>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            onClick={() => {
-              setEditingEvento(null);
-              setSelectedDateForNew(hoje.toISOString().slice(0, 10));
-              setFormTipoEmpresa("jm");
-              setOpenModalNovo(true);
-            }}
-            className="gap-2 bg-brand text-primary-foreground hover:bg-brand/90 dark:bg-gold dark:text-brand dark:hover:bg-gold/90"
-          >
-            <Plus className="size-4" /> Novo Evento na Agenda
-          </Button>
+      {/* contadores do mês */}
+      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div className="rounded-xl border bg-card p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total em {MESES[mes]}</p>
+          <p className="mt-1 text-3xl font-bold">{eventosMes.length}</p>
+        </div>
+        <div className="rounded-xl border bg-emerald-50 dark:bg-emerald-950/20 p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">JM Formaturas</p>
+          <p className="mt-1 text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+            {eventosMes.filter(e => e.empresa_tipo === "jm").length}
+          </p>
+        </div>
+        <div className="rounded-xl border bg-purple-50 dark:bg-purple-950/20 p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-400">Outras Empresas</p>
+          <p className="mt-1 text-3xl font-bold text-purple-600 dark:text-purple-400">
+            {eventosMes.filter(e => e.empresa_tipo === "outra").length}
+          </p>
         </div>
       </div>
 
-      {/* CARDS DE RESUMO DO MÊS */}
-      <div className="mb-6 grid gap-4 grid-cols-1 sm:grid-cols-3">
-        <Card className="shadow-card border-brand/20 dark:border-gold/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Eventos em {mesAtualNome}
-            </CardTitle>
-            <CalendarIcon className="size-4 text-gold" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{metricasMes.totalMes}</div>
-            <p className="text-xs text-muted-foreground mt-1">Agendados para este mês</p>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-card border-emerald-500/20 bg-emerald-500/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-              JM Formaturas & Eventos
-            </CardTitle>
-            <Building2 className="size-4 text-emerald-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{metricasMes.jmCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">Eventos próprios da empresa</p>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-card border-purple-500/20 bg-purple-500/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-purple-700 dark:text-purple-400">
-              Outras Empresas (Terceirizados)
-            </CardTitle>
-            <Briefcase className="size-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{metricasMes.outraCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">Eventos contratados por terceiros</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* CONTROLES DE NAVEGAÇÃO E FILTROS */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border p-4 bg-card shadow-card">
-        {/* Mês/Ano & Troca */}
+      {/* navegação de mês */}
+      <div className="mb-4 flex items-center justify-between rounded-xl border bg-card px-4 py-3 shadow-sm">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={mesAnterior} title="Mês Anterior">
-            <ChevronLeft className="size-4" />
-          </Button>
-          <h2 className="text-base font-bold min-w-[140px] text-center">
-            {mesAtualNome} {anoAtual}
-          </h2>
-          <Button variant="outline" size="icon" onClick={proximoMes} title="Próximo Mês">
-            <ChevronRight className="size-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={irParaHoje} className="text-xs ml-1">
-            Hoje
-          </Button>
-        </div>
-
-        {/* Busca e Tipo de Visão */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar evento, empresa, local ou cidade..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9 text-xs"
-            />
-          </div>
-
-          <Select value={filtroEmpresa} onValueChange={(v: any) => setFiltroEmpresa(v)}>
-            <SelectTrigger className="w-[180px] h-9 text-xs">
-              <Filter className="size-3.5 mr-1.5" />
-              <SelectValue placeholder="Empresa" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todas as Empresas</SelectItem>
-              <SelectItem value="jm">Apenas JM Formaturas</SelectItem>
-              <SelectItem value="outra">Outras Empresas</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Toggle Visão: Calendário vs Lista */}
-          <div className="flex items-center rounded-lg border p-1 bg-muted/40">
-            <Button
-              variant={visao === "calendario" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 text-xs px-2.5 gap-1"
-              onClick={() => setVisao("calendario")}
-            >
-              <CalendarDays className="size-3.5" /> Calendário
-            </Button>
-            <Button
-              variant={visao === "lista" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 text-xs px-2.5 gap-1"
-              onClick={() => setVisao("lista")}
-            >
-              <List className="size-3.5" /> Lista
-            </Button>
-          </div>
+          <button onClick={irAnterior} className="rounded-lg border p-1.5 hover:bg-muted"><ChevronLeft className="size-4" /></button>
+          <span className="min-w-[160px] text-center text-base font-bold">{MESES[mes]} {ano}</span>
+          <button onClick={irProximo} className="rounded-lg border p-1.5 hover:bg-muted"><ChevronRight className="size-4" /></button>
+          <button onClick={irHoje} className="ml-1 rounded-lg px-3 py-1 text-xs font-medium hover:bg-muted border">Hoje</button>
         </div>
       </div>
 
-      {/* CONTEÚDO PRINCIPAL: CALENDÁRIO OU LISTA */}
       {isLoading ? (
-        <Card className="shadow-card p-12 text-center text-muted-foreground">
-          <CalendarIcon className="mx-auto size-8 animate-pulse text-gold mb-2" />
-          <p className="text-sm font-medium">Carregando eventos da agenda...</p>
-        </Card>
-      ) : visao === "calendario" ? (
-        /* VISÃO CALENDÁRIO MENSAL */
-        <Card className="shadow-card overflow-hidden">
-          <CardContent className="p-0">
-            {/* Dias da semana */}
-            <div className="grid grid-cols-7 border-b bg-muted/50 text-center text-xs font-semibold uppercase tracking-wider py-2">
-              {DIAS_SEMANA.map((dia) => (
-                <div key={dia} className="py-1">
-                  {dia}
-                </div>
-              ))}
+        <div className="py-20 text-center text-muted-foreground">Carregando agenda...</div>
+      ) : (
+        <>
+          {/* calendário */}
+          <div className="mb-8 overflow-hidden rounded-xl border bg-card shadow-sm">
+            {/* header dias da semana */}
+            <div className="grid grid-cols-7 border-b bg-muted/40 text-center text-xs font-semibold uppercase tracking-wide">
+              {DIAS_SEM.map(d => <div key={d} className="py-2">{d}</div>)}
             </div>
-
-            {/* Grid dos Dias */}
-            <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-border">
-              {diasCalendario.map((slot, index) => {
-                const evs = eventosPorData[slot.dataStr] ?? [];
-                const isHoje = slot.dataStr === hoje.toISOString().slice(0, 10);
-
+            {/* grid */}
+            <div className="grid grid-cols-7 divide-x divide-y divide-border">
+              {grade.map((cell, idx) => {
+                const evs = porData[cell.data] ?? [];
+                const isHoje = cell.data === hoje;
                 return (
                   <div
-                    key={index}
-                    className={`min-h-[110px] p-2 flex flex-col transition-colors group relative ${
-                      slot.outroMes ? "bg-muted/10 opacity-40" : "hover:bg-muted/20"
-                    } ${isHoje ? "bg-gold/5 dark:bg-gold/10 font-bold" : ""}`}
+                    key={idx}
+                    className={`group relative min-h-[100px] p-1.5 transition-colors ${cell.outroMes ? "opacity-30" : "hover:bg-muted/20"} ${isHoje ? "bg-gold/10" : ""}`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span
-                        className={`inline-flex size-6 items-center justify-center rounded-full text-xs ${
-                          isHoje ? "bg-gold text-accent-foreground font-bold" : "text-muted-foreground"
-                        }`}
-                      >
-                        {slot.dia}
+                      <span className={`flex size-6 items-center justify-center rounded-full text-xs ${isHoje ? "bg-gold font-bold text-white dark:text-brand" : "text-muted-foreground"}`}>
+                        {cell.dia}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => abrirNovoParaData(slot.dataStr)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-foreground"
-                        title="Agendar neste dia"
-                      >
-                        <Plus className="size-3.5" />
-                      </button>
+                      {!cell.outroMes && (
+                        <button
+                          onClick={() => abrirNovo(cell.data)}
+                          className="hidden group-hover:flex size-5 items-center justify-center rounded hover:bg-muted"
+                          title="Adicionar evento"
+                        >
+                          <Plus className="size-3" />
+                        </button>
+                      )}
                     </div>
-
-                    {/* Badge de Eventos no dia */}
-                    <div className="space-y-1.5 overflow-y-auto max-h-[85px] pr-0.5">
-                      {evs.map((ev) => {
-                        const isJM = ev.empresa_tipo === "jm";
-                        return (
-                          <div
-                            key={ev.id}
-                            onClick={() => abrirEdicao(ev)}
-                            className={`cursor-pointer text-[11px] p-1.5 rounded-md border transition-all hover:scale-[1.02] shadow-sm leading-snug ${
-                              isJM
-                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-300"
-                                : "bg-purple-500/10 border-purple-500/30 text-purple-950 dark:text-purple-300"
-                            }`}
-                          >
-                            <div className="font-bold truncate flex items-center gap-1">
-                              <span
-                                className={`size-1.5 rounded-full shrink-0 ${
-                                  isJM ? "bg-emerald-500" : "bg-purple-500"
-                                }`}
-                              />
-                              {ev.titulo}
-                            </div>
-                            <div className="text-[10px] opacity-85 truncate flex items-center gap-1 mt-0.5">
-                              <Building2 className="size-2.5 shrink-0" />
-                              {ev.empresa_nome}
-                            </div>
-                            {ev.cidade && (
-                              <div className="text-[10px] opacity-75 truncate flex items-center gap-1">
-                                <MapPin className="size-2.5 shrink-0" />
-                                {ev.cidade}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                    <div className="space-y-1">
+                      {evs.map(ev => (
+                        <button
+                          key={ev.id}
+                          onClick={() => abrirEditar(ev)}
+                          className={`w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium leading-tight shadow-sm transition hover:scale-[1.02] ${
+                            ev.empresa_tipo === "jm"
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+                              : "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300"
+                          }`}
+                        >
+                          <span className="mr-1">📷</span>{ev.descricao}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 );
               })}
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        /* VISÃO LISTA DETALHADA */
-        <div className="space-y-3">
-          {eventosFiltrados.length === 0 ? (
-            <Card className="shadow-card p-10 text-center text-muted-foreground">
-              <CalendarIcon className="mx-auto size-10 opacity-30 mb-2" />
-              <p className="font-semibold text-foreground">Nenhum evento encontrado</p>
-              <p className="text-xs mt-1">
-                {searchQuery || filtroEmpresa !== "todos"
-                  ? "Tente ajustar os filtros de busca para visualizar os agendamentos."
-                  : "Clique no botão 'Novo Evento na Agenda' para agendar seu primeiro compromisso."}
+          </div>
+
+          {/* lista do mês */}
+          <div>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Eventos de {MESES[mes]}
+            </h2>
+            {eventosMes.length === 0 ? (
+              <p className="rounded-xl border bg-card py-10 text-center text-sm text-muted-foreground shadow-sm">
+                Nenhum evento agendado para {MESES[mes]}. Clique em <strong>+ Novo Evento</strong> para adicionar.
               </p>
-            </Card>
-          ) : (
-            eventosFiltrados.map((ev) => {
-              const isJM = ev.empresa_tipo === "jm";
-              const dataFormatada = new Date(`${ev.data_evento}T12:00:00`).toLocaleDateString("pt-BR", {
-                weekday: "short",
-                day: "2-digit",
-                month: "long",
-                year: "numeric",
-              });
-
-              return (
-                <Card
-                  key={ev.id}
-                  className={`shadow-card transition-all hover:border-gold/50 ${
-                    isJM ? "border-l-4 border-l-emerald-500" : "border-l-4 border-l-purple-500"
-                  }`}
-                >
-                  <CardContent className="p-4 flex flex-wrap items-center justify-between gap-4">
-                    <div className="space-y-1 flex-1 min-w-[240px]">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-base">{ev.titulo}</h3>
-                        <Badge
-                          variant="secondary"
-                          className={
-                            isJM
-                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
-                              : "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30"
-                          }
+            ) : (
+              <div className="space-y-3">
+                {eventosMes.map(ev => {
+                  const dataFormatada = new Date(`${ev.data_evento}T12:00:00`).toLocaleDateString("pt-BR", {
+                    weekday: "long", day: "2-digit", month: "long",
+                  });
+                  const isJM = ev.empresa_tipo === "jm";
+                  return (
+                    <div
+                      key={ev.id}
+                      className={`flex flex-wrap items-start justify-between gap-3 rounded-xl border bg-card p-4 shadow-sm ${isJM ? "border-l-4 border-l-emerald-500" : "border-l-4 border-l-purple-500"}`}
+                    >
+                      <div className="flex-1 space-y-1 min-w-[200px]">
+                        <p className="font-bold">{ev.descricao}</p>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1 font-medium text-foreground">
+                            <CalendarDays className="size-3.5 text-gold" />
+                            {dataFormatada}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Building2 className="size-3.5" />
+                            {ev.empresa_nome}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <MapPin className="size-3.5" />
+                            {ev.local_evento}{ev.cidade ? `, ${ev.cidade}` : ""}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Camera className="size-3.5" />
+                            {ev.fotografo}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => abrirEditar(ev)}
+                          className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted"
                         >
-                          {isJM ? "JM Formaturas" : ev.empresa_nome}
-                        </Badge>
-                        <Badge variant="outline" className="capitalize text-[11px]">
-                          {ev.status}
-                        </Badge>
+                          <Pencil className="size-3" /> Editar
+                        </button>
+                        <button
+                          onClick={() => setDeletandoId(ev.id)}
+                          className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="size-3" /> Excluir
+                        </button>
                       </div>
-
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pt-1">
-                        <span className="flex items-center gap-1 font-medium text-foreground">
-                          <CalendarIcon className="size-3.5 text-gold shrink-0" />
-                          {dataFormatada}
-                        </span>
-
-                        {(ev.horario_inicio || ev.horario_fim) && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="size-3.5 text-muted-foreground shrink-0" />
-                            {ev.horario_inicio || "—"} {ev.horario_fim ? `até ${ev.horario_fim}` : ""}
-                          </span>
-                        )}
-
-                        {ev.local_evento && (
-                          <span className="flex items-center gap-1">
-                            <Building2 className="size-3.5 text-muted-foreground shrink-0" />
-                            {ev.local_evento}
-                          </span>
-                        )}
-
-                        {ev.cidade && (
-                          <span className="flex items-center gap-1">
-                            <MapPin className="size-3.5 text-muted-foreground shrink-0" />
-                            {ev.cidade}
-                          </span>
-                        )}
-                      </div>
-
-                      {ev.observacoes && (
-                        <p className="text-xs text-muted-foreground/90 italic pt-1">
-                          Obs: "{ev.observacoes}"
-                        </p>
-                      )}
                     </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => abrirEdicao(ev)} className="gap-1 text-xs">
-                        <Edit className="size-3.5" /> Editar
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setDeletingEvento(ev)}
-                        className="gap-1 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        <Trash2 className="size-3.5" /> Excluir
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
+      {/* ── MODAL NOVO / EDITAR ── */}
+      {modalAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setModalAberto(false)}>
+          <div className="w-full max-w-md rounded-2xl border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 font-bold text-lg">
+                <CalendarDays className="size-5 text-gold" />
+                {editId ? "Editar Evento" : "Novo Evento na Agenda"}
+              </h2>
+              <button onClick={() => setModalAberto(false)} className="rounded-lg p-1 hover:bg-muted">
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-3">
+              {/* descrição */}
+              <div>
+                <label className="mb-1 block text-xs font-semibold">Descrição do Evento *</label>
+                <input
+                  className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold"
+                  placeholder="Ex: Cobertura Baile de Formatura – Medicina XXIII"
+                  value={form.descricao}
+                  onChange={e => set("descricao", e.target.value)}
+                />
+              </div>
+
+              {/* data */}
+              <div>
+                <label className="mb-1 block text-xs font-semibold">Data do Evento *</label>
+                <input
+                  type="date"
+                  className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold"
+                  value={form.data_evento}
+                  onChange={e => set("data_evento", e.target.value)}
+                />
+              </div>
+
+              {/* empresa */}
+              <div>
+                <label className="mb-1 block text-xs font-semibold">Evento para qual empresa? *</label>
+                <select
+                  className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold"
+                  value={form.empresa_tipo}
+                  onChange={e => set("empresa_tipo", e.target.value as "jm" | "outra")}
+                >
+                  <option value="jm">JM Formaturas & Eventos (própria)</option>
+                  <option value="outra">Outra empresa (terceirizado)</option>
+                </select>
+              </div>
+
+              {/* nome empresa – só se outra */}
+              {form.empresa_tipo === "outra" && (
+                <div>
+                  <label className="mb-1 block text-xs font-semibold">Nome da empresa contratante *</label>
+                  <input
+                    className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold"
+                    placeholder="Ex: Studio Alpha Fotografia"
+                    value={form.empresa_nome === "JM Formaturas & Eventos" ? "" : form.empresa_nome}
+                    onChange={e => set("empresa_nome", e.target.value)}
+                  />
+                </div>
+              )}
+
+              {/* local */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold">Local do Evento *</label>
+                  <input
+                    className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold"
+                    placeholder="Ex: Espaço Master"
+                    value={form.local_evento}
+                    onChange={e => set("local_evento", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold">Cidade *</label>
+                  <input
+                    className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold"
+                    placeholder="Ex: Araguaína-TO"
+                    value={form.cidade}
+                    onChange={e => set("cidade", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* fotógrafo */}
+              <div>
+                <label className="mb-1 block text-xs font-semibold">Nome do Fotógrafo Responsável *</label>
+                <input
+                  className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold"
+                  placeholder="Ex: João Silva"
+                  value={form.fotografo}
+                  onChange={e => set("fotografo", e.target.value)}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setModalAberto(false)} className="rounded-lg border px-4 py-2 text-sm hover:bg-muted">
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvar.isPending}
+                  className="rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-60 dark:bg-gold dark:text-brand"
+                >
+                  {salvar.isPending ? "Salvando..." : editId ? "Salvar Alterações" : "Adicionar à Agenda"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
-      {/* DIALOG: NOVO / EDITAR EVENTO NA AGENDA */}
-      <Dialog open={openModalNovo} onOpenChange={setOpenModalNovo}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CalendarDays className="size-5 text-gold" />
-              {editingEvento ? "Editar Evento da Agenda" : "Novo Evento na Agenda"}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Preencha os dados do compromisso. Ele será visível para todos os administradores.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form
-            id="form-agenda"
-            className="space-y-3.5 pt-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              salvarEvento.mutate(new FormData(e.currentTarget));
-            }}
-          >
-            <div className="space-y-1.5">
-              <Label htmlFor="titulo">Nome / Título do Evento *</Label>
-              <Input
-                id="titulo"
-                name="titulo"
-                placeholder="Ex: Cobertura Baile de Formatura Medicina XVII"
-                defaultValue={editingEvento?.titulo || ""}
-                required
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="empresa_tipo">Empresa Contratante / Responsável *</Label>
-              <select
-                id="empresa_tipo"
-                name="empresa_tipo"
-                value={formTipoEmpresa}
-                onChange={(e) => setFormTipoEmpresa(e.target.value as "jm" | "outra")}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+      {/* ── CONFIRMAR EXCLUSÃO ── */}
+      {deletandoId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDeletandoId(null)}>
+          <div className="w-full max-w-sm rounded-2xl border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h2 className="mb-2 font-bold text-destructive">Confirmar exclusão</h2>
+            <p className="mb-4 text-sm text-muted-foreground">Tem certeza que deseja remover este evento da agenda compartilhada?</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeletandoId(null)} className="rounded-lg border px-4 py-2 text-sm hover:bg-muted">Cancelar</button>
+              <button
+                onClick={() => excluir.mutate(deletandoId)}
+                disabled={excluir.isPending}
+                className="rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-white hover:bg-destructive/90 disabled:opacity-60"
               >
-                <option value="jm">JM Formaturas & Eventos (Própria)</option>
-                <option value="outra">Outra Empresa / Terceirizado</option>
-              </select>
+                {excluir.isPending ? "Removendo..." : "Sim, Excluir"}
+              </button>
             </div>
-
-            {formTipoEmpresa === "outra" && (
-              <div className="space-y-1.5">
-                <Label htmlFor="empresa_nome">Nome da Empresa Contratante *</Label>
-                <Input
-                  id="empresa_nome"
-                  name="empresa_nome"
-                  placeholder="Ex: Produtora Eventos Alpha"
-                  defaultValue={editingEvento?.empresa_nome || ""}
-                  required
-                />
-              </div>
-            )}
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="data_evento">Data do Evento *</Label>
-                <Input
-                  id="data_evento"
-                  name="data_evento"
-                  type="date"
-                  defaultValue={editingEvento?.data_evento || selectedDateForNew || hoje.toISOString().slice(0, 10)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="status">Status</Label>
-                <select
-                  id="status"
-                  name="status"
-                  defaultValue={editingEvento?.status || "confirmado"}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="confirmado">Confirmado</option>
-                  <option value="pendente">Pendente</option>
-                  <option value="concluido">Concluído</option>
-                  <option value="cancelado">Cancelado</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="horario_inicio">Horário de Início</Label>
-                <Input
-                  id="horario_inicio"
-                  name="horario_inicio"
-                  type="time"
-                  defaultValue={editingEvento?.horario_inicio || ""}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="horario_fim">Horário de Término</Label>
-                <Input
-                  id="horario_fim"
-                  name="horario_fim"
-                  type="time"
-                  defaultValue={editingEvento?.horario_fim || ""}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="local_evento">Local do Evento</Label>
-                <Input
-                  id="local_evento"
-                  name="local_evento"
-                  placeholder="Ex: Espaço Master"
-                  defaultValue={editingEvento?.local_evento || ""}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="cidade">Cidade</Label>
-                <Input
-                  id="cidade"
-                  name="cidade"
-                  placeholder="Ex: Araguaína-TO"
-                  defaultValue={editingEvento?.cidade || ""}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="observacoes">Observações / Detalhes</Label>
-              <Textarea
-                id="observacoes"
-                name="observacoes"
-                placeholder="Ex: Equipe de 4 fotógrafos, levar iluminação de estúdio."
-                defaultValue={editingEvento?.observacoes || ""}
-                rows={3}
-              />
-            </div>
-          </form>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpenModalNovo(false)}>
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              form="form-agenda"
-              disabled={salvarEvento.isPending}
-              className="bg-brand text-primary-foreground hover:bg-brand/90 dark:bg-gold dark:text-brand"
-            >
-              {salvarEvento.isPending ? "Salva..." : editingEvento ? "Salvar Alterações" : "Agendar Evento"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ALERT DIALOG: EXCLUIR EVENTO */}
-      <AlertDialog open={!!deletingEvento} onOpenChange={(o) => !o && setDeletingEvento(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-destructive flex items-center gap-2">
-              <AlertCircle className="size-5" /> Excluir Agendamento
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja remover o evento <strong>"{deletingEvento?.titulo}"</strong> da agenda compartilhada?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deletingEvento && excluirEvento.mutate(deletingEvento.id)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Sim, Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
