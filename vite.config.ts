@@ -23,16 +23,5 @@ export default defineConfig({
   },
   nitro: {
     preset: "vercel",
-    externals: {
-      inline: [
-        "@tanstack/react-start",
-        "@tanstack/react-router",
-        "@tanstack/router-core",
-        "@tanstack/router-utils",
-        "@tanstack/start-server-core",
-        "@tanstack/start-client-core",
-        "@tanstack/start-plugin-core"
-      ]
-    }
   },
 });
