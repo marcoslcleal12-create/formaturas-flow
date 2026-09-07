@@ -311,18 +311,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           </SidebarFooter>
         </Sidebar>
 
-        <SidebarInset className="flex min-w-0 flex-1 flex-col bg-background">
+        <SidebarInset>
           <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border/60 bg-background/95 px-4 backdrop-blur-md">
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <SidebarTrigger />
-              <div className="h-4 w-px bg-border" />
-              <span className="text-sm font-medium text-muted-foreground">
+              <div className="h-4 w-px bg-border shrink-0" />
+              <span className="truncate text-sm font-medium text-muted-foreground">
                 JM Formaturas — {isStaff ? "Painel de Gestão" : "Área do Formando"}
               </span>
             </div>
 
-            <div className="flex items-center gap-3">
-              <span className="hidden text-xs text-muted-foreground sm:inline-block">
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="hidden max-w-[220px] truncate text-xs text-muted-foreground sm:inline-block">
                 {user?.email}
               </span>
               <Button
@@ -337,7 +337,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </header>
 
-          <main className="flex-1 p-6 md:p-8">{children}</main>
+          <div className="min-w-0 flex-1 p-6 md:p-8">{children}</div>
         </SidebarInset>
     </SidebarProvider>
   );
