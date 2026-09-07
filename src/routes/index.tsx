@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { GraduationCap, ShieldCheck, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrandLottie } from "@/components/BrandLottie";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -25,9 +26,9 @@ function Index() {
   return (
     <div className="min-h-screen bg-brand text-primary-foreground">
       <div className="mx-auto flex max-w-5xl flex-col items-center px-4 py-20 text-center">
-        <span className="mb-6 flex size-16 items-center justify-center rounded-2xl bg-gold text-accent-foreground">
-          <GraduationCap className="size-8" />
-        </span>
+        <div className="mb-6 flex aspect-[6/5] w-48 items-center justify-center overflow-hidden sm:w-64">
+          <BrandLottie />
+        </div>
         <h1 className="font-display text-4xl font-semibold sm:text-5xl">JM Formaturas</h1>
         <p className="mt-4 max-w-xl text-base opacity-80">
           Gestão completa de turmas, formandos, contratos e pagamentos de formatura — com área exclusiva para cada

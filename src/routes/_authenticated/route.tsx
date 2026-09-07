@@ -1,17 +1,42 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { supabase } from "@/integrations/supabase/client";
+import { readStoredUser, tryRefreshAccessToken } from "@/lib/api/auth";
+import { getAuthToken } from "@/lib/api/client";
 import { getClienteSession } from "@/lib/aluno-login";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
-    // 1. Verifica sessão ativa no Supabase Auth (Admin/Equipe)
-    const { data } = await supabase.auth.getSession();
-    if (data?.session?.user) {
-      return { user: data.session.user };
+    const token = getAuthToken();
+    let stored = readStoredUser();
+
+    if (token && stored) {
+      return {
+        user: {
+          id: stored.id,
+          email: stored.email,
+          user_metadata: { full_name: stored.nomeCompleto },
+          roles: stored.roles,
+        },
+      };
     }
 
-    // 2. Verifica sessão do cliente logado via CPF (Formando ou Demanda)
+    if (!token) {
+      const refreshed = await tryRefreshAccessToken();
+      if (refreshed) {
+        stored = readStoredUser();
+        if (stored) {
+          return {
+            user: {
+              id: stored.id,
+              email: stored.email,
+              user_metadata: { full_name: stored.nomeCompleto },
+              roles: stored.roles,
+            },
+          };
+        }
+      }
+    }
+
     const clientSession = getClienteSession();
     if (clientSession?.cpf) {
       return {
@@ -23,7 +48,6 @@ export const Route = createFileRoute("/_authenticated")({
       };
     }
 
-    // Se nenhuma sessão for encontrada, redireciona para login
     throw redirect({ to: "/auth" });
   },
   component: () => <Outlet />,

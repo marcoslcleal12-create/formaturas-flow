@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AuthLottie } from "@/components/AuthLottie";
+import { BrandLottie } from "@/components/BrandLottie";
 import {
   apenasDigitos,
   cpfParaEmail,
@@ -124,7 +124,7 @@ function AuthPage() {
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-primary-foreground">
           <div className="mb-3 flex aspect-[6/5] w-40 items-center justify-center overflow-hidden sm:w-48">
-            <AuthLottie />
+            <BrandLottie />
           </div>
           <h1 className="font-display text-2xl font-semibold">JM Formaturas & Eventos</h1>
           <p className="text-sm opacity-75">Gestão de formaturas, casamentos, aniversários e ensaios</p>
