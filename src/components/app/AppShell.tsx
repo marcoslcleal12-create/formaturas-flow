@@ -53,9 +53,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const currentPath = routerState.location.pathname;
 
   const signOut = async () => {
-    clearClienteSession();
-    await apiLogout();
-    void navigate({ to: "/auth" });
+    try {
+      clearClienteSession();
+      await apiLogout();
+    } finally {
+      if (typeof window !== "undefined") {
+        window.location.assign("/auth");
+      } else {
+        void navigate({ to: "/auth", replace: true });
+      }
+    }
   };
 
   const isDemandasActive =

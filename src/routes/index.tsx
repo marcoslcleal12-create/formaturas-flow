@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { BrandLottie } from "@/components/BrandLottie";
+import { FormandosIcon, FinanceiroIcon, SegurancaIcon } from "@/components/FeatureIcons";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -45,19 +47,19 @@ function Index() {
 
         <div className="mt-16 grid gap-4 text-left sm:grid-cols-3">
           <Feature
-            image="/features/formandos.png"
+            icon={<FormandosIcon className="size-full" />}
             title="Turmas e formandos"
             text="Cadastro por curso, faculdade e semestre, com todos os dados do formando."
             delayMs={450}
           />
           <Feature
-            image="/features/financeiro.png"
+            icon={<FinanceiroIcon className="size-full" />}
             title="Financeiro"
             text="Contratos, parcelas, pagamentos e inadimplência sob controle."
             delayMs={600}
           />
           <Feature
-            image="/features/seguranca.png"
+            icon={<SegurancaIcon className="size-full" />}
             title="Acesso seguro"
             text="Cada formando enxerga apenas os próprios dados e documentos."
             delayMs={750}
@@ -69,12 +71,12 @@ function Index() {
 }
 
 function Feature({
-  image,
+  icon,
   title,
   text,
   delayMs,
 }: {
-  image: string;
+  icon: ReactNode;
   title: string;
   text: string;
   delayMs: number;
@@ -84,8 +86,8 @@ function Feature({
       className="group rounded-2xl border border-white/10 bg-white/5 p-5 shadow-elevated transition-all duration-300 hover:-translate-y-1 hover:bg-white/10 hover:border-white/20 animate-in fade-in slide-in-from-bottom-3 duration-700 fill-mode-both"
       style={{ animationDelay: `${delayMs}ms` }}
     >
-      <div className="mb-3 flex size-14 items-center justify-center rounded-xl bg-white/10 p-2 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
-        <img src={image} alt="" className="size-10 object-contain" />
+      <div className="mb-3 flex size-16 items-center justify-center rounded-xl bg-white/10 p-2.5 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
+        {icon}
       </div>
       <h2 className="font-display text-base font-semibold">{title}</h2>
       <p className="mt-1 text-sm opacity-75">{text}</p>
