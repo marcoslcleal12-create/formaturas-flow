@@ -1,13 +1,20 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { GraduationCap } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { login as apiLogin, register as apiRegister } from "@/lib/api/auth";
+import { ApiError, getAuthToken } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { apenasDigitos, cpfParaEmail, saveClienteSession, clearClienteSession, getClienteSession } from "@/lib/aluno-login";
+import { AuthLottie } from "@/components/AuthLottie";
+import {
+  apenasDigitos,
+  cpfParaEmail,
+  saveClienteSession,
+  clearClienteSession,
+  getClienteSession,
+} from "@/lib/aluno-login";
 import { loadDemandas } from "@/lib/demandas-store";
 
 export const Route = createFileRoute("/auth")({
@@ -39,10 +46,10 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    // Verifica se existe usuário autenticado válido no Supabase (Admin)
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user) void navigate({ to: "/dashboard" });
-    });
+    if (getAuthToken()) {
+      void navigate({ to: "/dashboard" });
+      return;
+    }
     const clientSession = getClienteSession();
     if (clientSession?.cpf) {
       void navigate({ to: "/painel" });
@@ -59,52 +66,18 @@ function AuthPage() {
           throw new Error("Por favor, digite os 11 números do seu CPF (somente números).");
         }
 
-        // 1. Tenta autenticação no Supabase Auth primeiro
         try {
-          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-            email: cpfParaEmail(rawDigits),
-            password: rawDigits,
-          });
-
-          if (!authError && authData.session) {
-            clearClienteSession();
-            toast.success("Acesso liberado com sucesso!");
-            void navigate({ to: "/painel" });
-            return;
-          }
-        } catch (e) {
-          // Continua para verificação local de alunos e demandas
+          await apiLogin(cpfParaEmail(rawDigits), rawDigits);
+          clearClienteSession();
+          toast.success("Acesso liberado com sucesso!");
+          void navigate({ to: "/painel" });
+          return;
+        } catch (err) {
+          if (!(err instanceof ApiError) || err.status !== 401) throw err;
         }
 
-        // 2. Verifica se o CPF está cadastrado na tabela de Formandos (Alunos)
-        try {
-          const { data: alunoDb } = await supabase
-            .from("alunos")
-            .select("id, nome_completo, cpf, turma_id")
-            .eq("cpf", rawDigits)
-            .limit(1)
-            .maybeSingle();
-
-          if (alunoDb) {
-            saveClienteSession({
-              cpf: rawDigits,
-              nome: alunoDb.nome_completo,
-              tipo: "aluno",
-              email: cpfParaEmail(rawDigits),
-              alunoId: alunoDb.id,
-            });
-            toast.success(`Bem-vindo, ${alunoDb.nome_completo}! Acesso liberado.`);
-            void navigate({ to: "/painel" });
-            return;
-          }
-        } catch (e) {
-          // Continua
-        }
-
-        // 3. Verifica se o CPF pertence a uma Demanda (Casamento, Aniversário, Ensaio)
         const demandas = loadDemandas();
         const clienteDemanda = demandas.find((d) => apenasDigitos(d.cpf) === rawDigits);
-
         if (clienteDemanda) {
           saveClienteSession({
             cpf: rawDigits,
@@ -119,29 +92,28 @@ function AuthPage() {
         }
 
         throw new Error(
-          `CPF ${rawDigits} não encontrado no sistema. Verifique o número digitado ou contate a JM Formaturas.`
+          `CPF ${rawDigits} não encontrado. Verifique o número digitado ou contate a JM Formaturas.`,
         );
       } else if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        await apiLogin(email, password);
         clearClienteSession();
         void navigate({ to: "/dashboard" });
       } else {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: window.location.origin,
-            data: { full_name: nome },
-          },
-        });
-        if (error) throw error;
+        await apiRegister(email, password, nome);
         clearClienteSession();
         toast.success("Conta criada!");
         void navigate({ to: "/dashboard" });
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Não foi possível entrar");
+      const msg =
+        err instanceof ApiError
+          ? err.status === 401
+            ? "E-mail ou senha inválidos."
+            : `Erro ${err.status}: ${err.message}`
+          : err instanceof Error
+          ? err.message
+          : "Não foi possível entrar";
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -151,9 +123,9 @@ function AuthPage() {
     <div className="flex min-h-screen items-center justify-center bg-brand px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-primary-foreground">
-          <span className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-gold text-accent-foreground">
-            <GraduationCap className="size-7" />
-          </span>
+          <div className="mb-3 flex aspect-[6/5] w-40 items-center justify-center overflow-hidden sm:w-48">
+            <AuthLottie />
+          </div>
           <h1 className="font-display text-2xl font-semibold">JM Formaturas & Eventos</h1>
           <p className="text-sm opacity-75">Gestão de formaturas, casamentos, aniversários e ensaios</p>
         </div>
@@ -217,7 +189,7 @@ function AuthPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    minLength={6}
+                    minLength={8}
                     maxLength={72}
                   />
                 </div>
