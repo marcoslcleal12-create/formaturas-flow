@@ -17,7 +17,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { logout as apiLogout } from "@/lib/api/auth";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -54,7 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     clearClienteSession();
-    await supabase.auth.signOut();
+    await apiLogout();
     void navigate({ to: "/auth" });
   };
 
@@ -62,9 +62,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     currentPath.startsWith("/turmas") || currentPath.startsWith("/demandas");
 
   return (
-    <SidebarProvider defaultOpen>
-      <div className="flex min-h-screen w-full bg-background text-foreground">
-        <Sidebar variant="sidebar" collapsible="icon" className="border-r border-border/60">
+    <SidebarProvider defaultOpen className="bg-background text-foreground">
+      <Sidebar variant="sidebar" collapsible="icon" className="border-r border-border/60">
           <SidebarHeader className="border-b border-border/40 p-4">
             <div className="flex items-center gap-3">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gold text-accent-foreground shadow-sm">
@@ -333,7 +332,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <main className="flex-1 p-6 md:p-8">{children}</main>
         </SidebarInset>
-      </div>
     </SidebarProvider>
   );
 }
