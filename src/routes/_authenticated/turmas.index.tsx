@@ -1,10 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Plus, Edit, Trash2, MoreVertical, GraduationCap, Building2, MapPin, Calendar, Search } from "lucide-react";
+import { Plus, Edit, Trash2, MoreVertical, GraduationCap, Building2, MapPin, Search } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  listTurmas,
+  createTurma as apiCreateTurma,
+  updateTurma as apiUpdateTurma,
+  deleteTurma as apiDeleteTurma,
+  type TurmaListItem,
+  type StatusTurma,
+} from "@/lib/api/turmas";
 import { AppShell } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,13 +42,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authenticated/turmas/")({
   head: () => ({
@@ -61,37 +61,19 @@ const turmaSchema = z.object({
   faculdade: z.string().trim().min(2, "Informe a faculdade").max(120),
   cidade: z.string().trim().max(120).optional(),
   semestre: z.string().trim().max(20).optional(),
-  status: z.string().optional(),
+  status: z.enum(["Ativa", "Inativa", "Concluida"]).optional(),
 });
-
-interface TurmaData {
-  id: string;
-  nome: string;
-  curso: string;
-  faculdade: string;
-  cidade: string | null;
-  semestre: string | null;
-  status: string;
-  alunos?: { count: number }[];
-}
 
 function TurmasPage() {
   const queryClient = useQueryClient();
   const [openCreate, setOpenCreate] = useState(false);
-  const [editingTurma, setEditingTurma] = useState<TurmaData | null>(null);
-  const [deletingTurma, setDeletingTurma] = useState<TurmaData | null>(null);
+  const [editingTurma, setEditingTurma] = useState<TurmaListItem | null>(null);
+  const [deletingTurma, setDeletingTurma] = useState<TurmaListItem | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
   const { data: turmas = [], isLoading } = useQuery({
     queryKey: ["turmas"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("turmas")
-        .select("*, alunos(count)")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as TurmaData[];
-    },
+    queryFn: ({ signal }) => listTurmas({ signal }),
   });
 
   const createTurma = useMutation({
@@ -103,15 +85,16 @@ function TurmasPage() {
         cidade: form.get("cidade") || undefined,
         semestre: form.get("semestre") || undefined,
       });
-      const { error } = await supabase.from("turmas").insert({
+      await apiCreateTurma({
         nome: parsed.nome,
         curso: parsed.curso,
         faculdade: parsed.faculdade,
+        instituicao: parsed.faculdade,
         cidade: parsed.cidade ?? null,
         semestre: parsed.semestre ?? null,
-        status: "ativa",
+        status: "Ativa",
+        tipoEvento: "Formatura",
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Turma criada com sucesso!");
@@ -131,20 +114,17 @@ function TurmasPage() {
         faculdade: form.get("faculdade"),
         cidade: form.get("cidade") || undefined,
         semestre: form.get("semestre") || undefined,
-        status: form.get("status") || "ativa",
+        status: (form.get("status") as StatusTurma) || "Ativa",
       });
-      const { error } = await supabase
-        .from("turmas")
-        .update({
-          nome: parsed.nome,
-          curso: parsed.curso,
-          faculdade: parsed.faculdade,
-          cidade: parsed.cidade ?? null,
-          semestre: parsed.semestre ?? null,
-          status: parsed.status ?? "ativa",
-        })
-        .eq("id", editingTurma.id);
-      if (error) throw error;
+      await apiUpdateTurma(editingTurma.id, {
+        nome: parsed.nome,
+        curso: parsed.curso,
+        faculdade: parsed.faculdade,
+        instituicao: parsed.faculdade,
+        cidade: parsed.cidade ?? null,
+        semestre: parsed.semestre ?? null,
+        status: parsed.status ?? "Ativa",
+      });
     },
     onSuccess: () => {
       toast.success("Turma atualizada com sucesso!");
@@ -156,10 +136,7 @@ function TurmasPage() {
   });
 
   const deleteTurma = useMutation({
-    mutationFn: async (turmaId: string) => {
-      const { error } = await supabase.from("turmas").delete().eq("id", turmaId);
-      if (error) throw error;
-    },
+    mutationFn: (turmaId: string) => apiDeleteTurma(turmaId),
     onSuccess: () => {
       toast.success("Turma excluída com sucesso.");
       setDeletingTurma(null);
@@ -168,22 +145,23 @@ function TurmasPage() {
     onError: (error) => toast.error(`Erro ao excluir turma: ${(error as Error).message}`),
   });
 
-  const isDemanda = (t: TurmaData) => {
-    const obs = (t.status || "").toLowerCase(); // Fallback, real check below
-    // we don't have observacoes in TurmaData by default in this file, we should fetch it or use curso
+  const isDemanda = (t: TurmaListItem) => {
     const c = (t.curso || "").toLowerCase();
-    return c.includes("ensaio") || 
-           c.includes("casamento") || 
-           c.includes("festa") || 
-           c.includes("aniversario") ||
-           c.includes("aniversário");
+    return (
+      c.includes("ensaio") ||
+      c.includes("casamento") ||
+      c.includes("festa") ||
+      c.includes("aniversario") ||
+      c.includes("aniversário")
+    );
   };
 
-  const filteredTurmas = turmas.filter((t) => 
-    !isDemanda(t) &&
-    (t.nome.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    t.curso.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.faculdade.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredTurmas = turmas.filter(
+    (t) =>
+      !isDemanda(t) &&
+      (t.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.curso ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.faculdade ?? t.instituicao ?? "").toLowerCase().includes(searchQuery.toLowerCase())),
   );
 
   return (
@@ -231,40 +209,38 @@ function TurmasPage() {
         </Dialog>
       </div>
 
-      <div className="mb-6 relative">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+      <div className="relative mb-6">
+        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
           <Search className="size-4 text-muted-foreground" />
         </div>
-        <Input 
-          type="search" 
-          placeholder="Pesquisar por nome da turma, curso ou faculdade..." 
-          className="pl-9 max-w-md bg-background"
+        <Input
+          type="search"
+          placeholder="Pesquisar por nome da turma, curso ou faculdade..."
+          className="max-w-md bg-background pl-9"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
       </div>
 
       {isLoading && <p className="text-sm text-muted-foreground">Carregando turmas…</p>}
-      
+
       {filteredTurmas.length === 0 && !isLoading && (
         <p className="text-sm text-muted-foreground">Nenhuma turma encontrada.</p>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         {filteredTurmas.map((turma) => (
-          <Card key={turma.id} className="relative group hover:shadow-elevated transition-all border-border/80">
+          <Card key={turma.id} className="group relative border-border/80 transition-all hover:shadow-elevated">
             <CardContent className="pt-6">
               <div className="flex items-start justify-between gap-2">
                 <Link to="/turmas/$turmaId" params={{ turmaId: turma.id }} className="flex-1">
-                  <p className="font-display font-semibold text-lg hover:text-primary transition-colors">
+                  <p className="font-display text-lg font-semibold transition-colors hover:text-primary">
                     {turma.nome}
                   </p>
                 </Link>
 
                 <div className="flex items-center gap-2">
-                  <Badge variant={turma.status === "ativa" ? "default" : "secondary"}>
-                    {turma.status}
-                  </Badge>
+                  <Badge variant={turma.status === "Ativa" ? "default" : "secondary"}>{turma.status}</Badge>
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -273,15 +249,12 @@ function TurmasPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => setEditingTurma(turma)}
-                        className="gap-2 cursor-pointer"
-                      >
+                      <DropdownMenuItem onClick={() => setEditingTurma(turma)} className="cursor-pointer gap-2">
                         <Edit className="size-4" /> Editar Turma
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => setDeletingTurma(turma)}
-                        className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                        className="cursor-pointer gap-2 text-destructive focus:text-destructive"
                       >
                         <Trash2 className="size-4" /> Excluir Turma
                       </DropdownMenuItem>
@@ -290,13 +263,13 @@ function TurmasPage() {
                 </div>
               </div>
 
-              <Link to="/turmas/$turmaId" params={{ turmaId: turma.id }} className="block mt-2 space-y-2">
-                <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                  <Building2 className="size-3.5 text-primary" /> {turma.curso} · {turma.faculdade}
+              <Link to="/turmas/$turmaId" params={{ turmaId: turma.id }} className="mt-2 block space-y-2">
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Building2 className="size-3.5 text-primary" /> {turma.curso ?? "—"} · {turma.faculdade ?? turma.instituicao ?? "—"}
                 </p>
-                <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t">
+                <div className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
-                    <GraduationCap className="size-3.5 text-gold" /> {turma.alunos?.[0]?.count ?? 0} formandos
+                    <GraduationCap className="size-3.5 text-gold" /> {turma.totalAlunos} formandos
                   </span>
                   <span className="flex items-center gap-1">
                     <MapPin className="size-3.5 text-muted-foreground" /> {turma.cidade ?? "Sem local definido"}
@@ -310,13 +283,12 @@ function TurmasPage() {
 
       {!isLoading && turmas.length === 0 && (
         <div className="rounded-2xl border border-dashed p-12 text-center text-muted-foreground">
-          <GraduationCap className="mx-auto size-12 opacity-30 mb-3" />
-          <p className="font-semibold text-foreground text-base">Nenhuma turma cadastrada ainda</p>
-          <p className="text-sm mt-1">Cadastre a primeira turma clicando no botão acima.</p>
+          <GraduationCap className="mx-auto mb-3 size-12 opacity-30" />
+          <p className="text-base font-semibold text-foreground">Nenhuma turma cadastrada ainda</p>
+          <p className="mt-1 text-sm">Cadastre a primeira turma clicando no botão acima.</p>
         </div>
       )}
 
-      {/* MODAL: EDITAR TURMA */}
       <Dialog open={!!editingTurma} onOpenChange={(v) => !v && setEditingTurma(null)}>
         {editingTurma && (
           <DialogContent>
@@ -331,35 +303,17 @@ function TurmasPage() {
                 updateTurma.mutate(new FormData(e.currentTarget));
               }}
             >
-              <Field
-                name="nome"
-                label="Nome da turma *"
-                defaultValue={editingTurma.nome}
-                required
-              />
+              <Field name="nome" label="Nome da turma *" defaultValue={editingTurma.nome} required />
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field
-                  name="curso"
-                  label="Curso *"
-                  defaultValue={editingTurma.curso}
-                  required
-                />
+                <Field name="curso" label="Curso *" defaultValue={editingTurma.curso ?? ""} required />
                 <Field
                   name="faculdade"
                   label="Faculdade *"
-                  defaultValue={editingTurma.faculdade}
+                  defaultValue={editingTurma.faculdade ?? editingTurma.instituicao ?? ""}
                   required
                 />
-                <Field
-                  name="cidade"
-                  label="Cidade"
-                  defaultValue={editingTurma.cidade || ""}
-                />
-                <Field
-                  name="semestre"
-                  label="Semestre"
-                  defaultValue={editingTurma.semestre || ""}
-                />
+                <Field name="cidade" label="Cidade" defaultValue={editingTurma.cidade ?? ""} />
+                <Field name="semestre" label="Semestre" defaultValue={editingTurma.semestre ?? ""} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="status">Status da Turma</Label>
@@ -369,9 +323,9 @@ function TurmasPage() {
                   defaultValue={editingTurma.status}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
-                  <option value="ativa">Ativa</option>
-                  <option value="concluida">Concluída</option>
-                  <option value="cancelada">Cancelada</option>
+                  <option value="Ativa">Ativa</option>
+                  <option value="Concluida">Concluída</option>
+                  <option value="Inativa">Inativa</option>
                 </select>
               </div>
             </form>
@@ -387,14 +341,13 @@ function TurmasPage() {
         )}
       </Dialog>
 
-      {/* ALERT DIALOG: EXCLUIR TURMA */}
       <AlertDialog open={!!deletingTurma} onOpenChange={(v) => !v && setDeletingTurma(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-destructive">Excluir Turma</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir a turma <strong>{deletingTurma?.nome}</strong>?
-              Esta ação não pode ser desfeita e removerá os formandos e contratos vinculados.
+              Tem certeza que deseja excluir a turma <strong>{deletingTurma?.nome}</strong>? Esta ação não pode ser
+              desfeita e removerá os formandos e contratos vinculados.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

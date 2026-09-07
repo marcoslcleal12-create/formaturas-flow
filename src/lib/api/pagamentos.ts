@@ -7,16 +7,16 @@ export type StatusCobranca = "Pendente" | "Confirmado" | "Vencido" | "Cancelado"
 export type CriarCobrancaInput = {
   externalReference: string;
   clienteNome: string;
-  clienteCpf?: string;
-  clienteEmail?: string;
-  clienteWhatsapp?: string;
-  clienteTelefone?: string;
+  clienteCpf?: string | undefined;
+  clienteEmail?: string | undefined;
+  clienteWhatsapp?: string | undefined;
+  clienteTelefone?: string | undefined;
   valor: number;
   vencimento: string;
   descricao: string;
   tipo: TipoPagamento;
-  numParcelasCartao?: number;
-  tipoEvento?: TipoEvento;
+  numParcelasCartao?: number | undefined;
+  tipoEvento?: TipoEvento | undefined;
 };
 
 export type Cobranca = {
@@ -57,8 +57,8 @@ export async function criarCobranca(
     method: "POST",
     path: "/api/v1/cobrancas",
     body: input,
-    token: opts?.token,
-    signal: opts?.signal,
+    ...(opts?.token ? { token: opts.token } : {}),
+    ...(opts?.signal ? { signal: opts.signal } : {}),
   });
   return "existente" in resp ? resp.cobranca : resp;
 }
@@ -71,8 +71,8 @@ export async function buscarCobrancaPorRef(
     return await apiFetch<Cobranca>({
       method: "GET",
       path: `/api/v1/cobrancas/by-ref/${encodeURIComponent(externalRef)}`,
-      token: opts?.token,
-      signal: opts?.signal,
+      ...(opts?.token ? { token: opts.token } : {}),
+      ...(opts?.signal ? { signal: opts.signal } : {}),
     });
   } catch (err) {
     if (err instanceof Error && err.message.includes("404")) return null;

@@ -1,17 +1,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import { 
-  ArrowLeft, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  MoreVertical, 
-  KeyRound, 
-  User, 
-  Phone, 
-  Mail, 
-  GraduationCap,
+import {
+  ArrowLeft,
+  Plus,
+  Edit,
+  Trash2,
+  MoreVertical,
+  User,
+  Phone,
   Link2,
   Copy,
   Check,
@@ -22,7 +19,19 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  getTurma,
+  updateTurma as apiUpdateTurma,
+  deleteTurma as apiDeleteTurma,
+  type StatusTurma,
+} from "@/lib/api/turmas";
+import {
+  listAlunos,
+  updateAluno as apiUpdateAluno,
+  deleteAluno as apiDeleteAluno,
+  type AlunoListItem,
+} from "@/lib/api/alunos";
+import { listContratos, type Contrato } from "@/lib/api/contratos";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +52,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -79,7 +87,6 @@ const alunoSchema = z.object({
   cpf: z.string().trim().max(20).optional(),
   whatsapp: z.string().trim().max(20).optional(),
   email: z.string().trim().email("E-mail inválido").max(255).optional().or(z.literal("")),
-  data_nascimento: z.string().trim().max(10).optional(),
 });
 
 const turmaEditSchema = z.object({
@@ -91,16 +98,28 @@ const turmaEditSchema = z.object({
   status: z.string().optional(),
 });
 
-interface AlunoItem {
-  id: string;
-  turma_id: string;
-  nome_completo: string;
-  cpf: string | null;
-  whatsapp: string | null;
-  email: string | null;
-  data_nascimento: string | null;
-  user_id: string | null;
-  status: string;
+function statusLegacyToApi(s: string | undefined): StatusTurma {
+  switch ((s ?? "ativa").toLowerCase()) {
+    case "concluida":
+    case "concluída":
+      return "Concluida";
+    case "cancelada":
+    case "inativa":
+      return "Inativa";
+    default:
+      return "Ativa";
+  }
+}
+
+function statusApiToLegacy(s: StatusTurma | string | undefined): string {
+  switch (s) {
+    case "Concluida":
+      return "concluida";
+    case "Inativa":
+      return "cancelada";
+    default:
+      return "ativa";
+  }
 }
 
 function TurmaDetalhe() {
@@ -114,10 +133,9 @@ function TurmaDetalhe() {
   const [openGerenciarPacotes, setOpenGerenciarPacotes] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const [editingAluno, setEditingAluno] = useState<AlunoItem | null>(null);
-  const [deletingAluno, setDeletingAluno] = useState<AlunoItem | null>(null);
+  const [editingAluno, setEditingAluno] = useState<AlunoListItem | null>(null);
+  const [deletingAluno, setDeletingAluno] = useState<AlunoListItem | null>(null);
 
-  // Estado local dos pacotes da turma
   const [pacotes, setPacotes] = useState<PacoteItem[]>(PACOTES_PADRAO);
   const [novoNome, setNovoNome] = useState("");
   const [novoMaterial, setNovoMaterial] = useState("");
@@ -126,21 +144,20 @@ function TurmaDetalhe() {
   const { data } = useQuery({
     queryKey: ["turma", turmaId],
     queryFn: async () => {
-      const [turma, alunos, contratos] = await Promise.all([
-        supabase.from("turmas").select("*").eq("id", turmaId).maybeSingle(),
-        supabase.from("alunos").select("*").eq("turma_id", turmaId).neq("status", "inativo").order("nome_completo"),
-        supabase.from("contratos").select("*, parcelas(*)").eq("turma_id", turmaId),
+      const [turma, alunos, contratosAll] = await Promise.all([
+        getTurma(turmaId),
+        listAlunos({ turmaId }),
+        listContratos(),
       ]);
-      if (turma.error) throw turma.error;
-      if (alunos.error) throw alunos.error;
-      if (contratos.error) throw contratos.error;
-      return { turma: turma.data, alunos: alunos.data as AlunoItem[], contratos: contratos.data };
+      const alunoIds = new Set(alunos.map((a) => a.id));
+      const contratos = contratosAll.filter((c) => alunoIds.has(c.alunoId));
+      return { turma, alunos, contratos };
     },
   });
 
   const turma = data?.turma;
-  const alunos = data?.alunos ?? [];
-  const contratos = data?.contratos ?? [];
+  const alunos: AlunoListItem[] = data?.alunos ?? [];
+  const contratos: Contrato[] = data?.contratos ?? [];
 
   useEffect(() => {
     if (turma?.observacoes) {
@@ -160,15 +177,24 @@ function TurmaDetalhe() {
     }
   };
 
-  // Salvar Pacotes Mutation
   const salvarPacotes = useMutation({
     mutationFn: async (novosPacotes: PacoteItem[]) => {
-      const serialized = serializarPacotesTurma(turma?.observacoes, novosPacotes);
-      const { error } = await supabase
-        .from("turmas")
-        .update({ observacoes: serialized })
-        .eq("id", turmaId);
-      if (error) throw error;
+      if (!turma) throw new Error("Turma não carregada");
+      const serialized = serializarPacotesTurma(turma.observacoes ?? "", novosPacotes);
+      await apiUpdateTurma(turmaId, {
+        nome: turma.nome,
+        faculdade: turma.faculdade ?? undefined,
+        instituicao: turma.instituicao ?? undefined,
+        curso: turma.curso ?? undefined,
+        cidade: turma.cidade ?? undefined,
+        semestre: turma.semestre ?? undefined,
+        anoFormatura: turma.anoFormatura ?? undefined,
+        previsaoFormatura: turma.previsaoFormatura ?? undefined,
+        tipoEvento: turma.tipoEvento,
+        dataEvento: turma.dataEvento ?? undefined,
+        status: turma.status,
+        observacoes: serialized,
+      });
     },
     onSuccess: () => {
       toast.success("Pacotes da turma atualizados com sucesso!");
@@ -214,9 +240,9 @@ function TurmaDetalhe() {
     setPacotes(pacotes.filter((p) => p.id !== id));
   };
 
-  // Update Turma Mutation
   const updateTurma = useMutation({
     mutationFn: async (form: FormData) => {
+      if (!turma) throw new Error("Turma não carregada");
       const parsed = turmaEditSchema.parse({
         nome: form.get("nome"),
         curso: form.get("curso"),
@@ -225,18 +251,20 @@ function TurmaDetalhe() {
         semestre: form.get("semestre") || undefined,
         status: form.get("status") || "ativa",
       });
-      const { error } = await supabase
-        .from("turmas")
-        .update({
-          nome: parsed.nome,
-          curso: parsed.curso,
-          faculdade: parsed.faculdade,
-          cidade: parsed.cidade ?? null,
-          semestre: parsed.semestre ?? null,
-          status: parsed.status ?? "ativa",
-        })
-        .eq("id", turmaId);
-      if (error) throw error;
+      await apiUpdateTurma(turmaId, {
+        nome: parsed.nome,
+        curso: parsed.curso,
+        faculdade: parsed.faculdade,
+        instituicao: parsed.faculdade,
+        cidade: parsed.cidade ?? undefined,
+        semestre: parsed.semestre ?? undefined,
+        anoFormatura: turma.anoFormatura ?? undefined,
+        previsaoFormatura: turma.previsaoFormatura ?? undefined,
+        tipoEvento: turma.tipoEvento,
+        dataEvento: turma.dataEvento ?? undefined,
+        status: statusLegacyToApi(parsed.status),
+        observacoes: turma.observacoes ?? undefined,
+      });
     },
     onSuccess: () => {
       toast.success("Turma atualizada com sucesso!");
@@ -248,11 +276,9 @@ function TurmaDetalhe() {
       toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
   });
 
-  // Delete Turma Mutation
   const deleteTurma = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("turmas").delete().eq("id", turmaId);
-      if (error) throw error;
+      await apiDeleteTurma(turmaId);
     },
     onSuccess: () => {
       toast.success("Turma excluída com sucesso.");
@@ -262,7 +288,6 @@ function TurmaDetalhe() {
     onError: (error) => toast.error(`Erro ao excluir turma: ${(error as Error).message}`),
   });
 
-  // Update Aluno Mutation
   const updateAluno = useMutation({
     mutationFn: async (form: FormData) => {
       if (!editingAluno) return;
@@ -271,19 +296,13 @@ function TurmaDetalhe() {
         cpf: form.get("cpf") || undefined,
         whatsapp: form.get("whatsapp") || undefined,
         email: form.get("email") || undefined,
-        data_nascimento: form.get("data_nascimento") || undefined,
       });
-      const { error } = await supabase
-        .from("alunos")
-        .update({
-          nome_completo: parsed.nome_completo,
-          cpf: parsed.cpf ? parsed.cpf.replace(/\D/g, "") : null,
-          whatsapp: parsed.whatsapp ?? null,
-          email: parsed.email || null,
-          data_nascimento: parsed.data_nascimento || null,
-        })
-        .eq("id", editingAluno.id);
-      if (error) throw error;
+      await apiUpdateAluno(editingAluno.id, {
+        nomeCompleto: parsed.nome_completo,
+        cpf: parsed.cpf ? parsed.cpf.replace(/\D/g, "") : undefined,
+        whatsapp: parsed.whatsapp ?? undefined,
+        email: parsed.email || undefined,
+      });
     },
     onSuccess: () => {
       toast.success("Dados do formando atualizados!");
@@ -295,11 +314,9 @@ function TurmaDetalhe() {
       toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
   });
 
-  // Delete Aluno Mutation
   const deleteAluno = useMutation({
     mutationFn: async (alunoId: string) => {
-      const { error } = await supabase.from("alunos").delete().eq("id", alunoId);
-      if (error) throw error;
+      await apiDeleteAluno(alunoId);
     },
     onSuccess: () => {
       toast.success("Formando excluído com sucesso.");
@@ -311,18 +328,17 @@ function TurmaDetalhe() {
 
   const hoje = new Date().toISOString().slice(0, 10);
   const todasParcelas = contratos.flatMap((c) => c.parcelas ?? []);
-  const contratado = contratos.reduce(
-    (s, c) => s + Number(c.valor_total) - Number(c.desconto),
-    0,
-  );
-  const entradas = contratos.reduce((s, c) => s + Number(c.valor_entrada), 0);
-  const recebidoParcelas = todasParcelas.reduce((s, p) => s + Number(p.valor_pago), 0);
+  const contratado = contratos.reduce((s, c) => s + Number(c.valorTotal), 0);
+  const entradas = contratos.reduce((s, c) => s + Number(c.valorEntrada), 0);
+  const recebidoParcelas = todasParcelas.reduce((s, p) => s + Number(p.valorPago), 0);
   const recebido = entradas + recebidoParcelas;
   const aReceber = Math.max(contratado - recebido, 0);
   const atrasado = todasParcelas
-    .filter((p) => p.status !== "pago" && p.vencimento < hoje)
-    .reduce((s, p) => s + (Number(p.valor) - Number(p.valor_pago)), 0);
+    .filter((p) => p.status !== "Pago" && p.vencimento < hoje)
+    .reduce((s, p) => s + (Number(p.valor) - Number(p.valorPago)), 0);
   const percentual = contratado > 0 ? Math.round((recebido / contratado) * 100) : 0;
+
+  const statusLegacy = statusApiToLegacy(turma?.status);
 
   return (
     <AppShell>
@@ -334,8 +350,8 @@ function TurmaDetalhe() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{turma?.nome ?? "Turma"}</h1>
-            <Badge variant={turma?.status === "ativa" ? "default" : "secondary"}>
-              {turma?.status ?? "ativa"}
+            <Badge variant={statusLegacy === "ativa" ? "default" : "secondary"}>
+              {statusLegacy}
             </Badge>
             <Badge variant="outline" className="gap-1.5 border-primary/40 text-primary font-medium">
               <Package className="size-3.5" />
@@ -343,14 +359,12 @@ function TurmaDetalhe() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {turma?.curso} · {turma?.faculdade} · {turma?.semestre ?? "Sem semestre"} · {turma?.cidade ?? "Sem cidade"}
+            {turma?.curso} · {turma?.faculdade ?? turma?.instituicao} · {turma?.semestre ?? "Sem semestre"} · {turma?.cidade ?? "Sem cidade"}
           </p>
         </div>
 
-        {/* BARRA DE AÇÕES SUPERIORES */}
         <div className="flex flex-wrap items-center gap-2">
-          
-          {/* BOTÃO LINK DE ADESÃO */}
+
           <Dialog open={openLinkAdesao} onOpenChange={setOpenLinkAdesao}>
             <Button
               size="sm"
@@ -412,7 +426,6 @@ function TurmaDetalhe() {
             </DialogContent>
           </Dialog>
 
-          {/* BOTÃO GERENCIAR PACOTES */}
           <Dialog open={openGerenciarPacotes} onOpenChange={setOpenGerenciarPacotes}>
             <Button
               variant="outline"
@@ -433,7 +446,6 @@ function TurmaDetalhe() {
                   Ative ou desative os pacotes disponíveis para adesão desta turma, ou cadastre novos pacotes personalizados.
                 </p>
 
-                {/* Lista de pacotes configurados */}
                 <div className="space-y-3">
                   <Label className="text-xs uppercase font-bold text-muted-foreground">Pacotes Cadastrados</Label>
                   <div className="space-y-2.5">
@@ -481,7 +493,6 @@ function TurmaDetalhe() {
                   </div>
                 </div>
 
-                {/* Adicionar novo pacote customizado */}
                 <div className="p-4 rounded-xl border border-dashed border-border bg-muted/20 space-y-3">
                   <Label className="text-sm font-semibold flex items-center gap-2">
                     <PlusCircle className="size-4 text-primary" /> Cadastrar Novo Pacote Personalizado
@@ -541,7 +552,6 @@ function TurmaDetalhe() {
       </div>
 
 
-      {/* LISTA DE FORMANDOS */}
       <Card className="shadow-card">
         <CardHeader>
           <CardTitle className="text-base flex items-center justify-between">
@@ -565,7 +575,7 @@ function TurmaDetalhe() {
                 className="flex-1 min-w-[200px]"
               >
                 <p className="font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-2">
-                  <User className="size-4 text-primary" /> {aluno.nome_completo}
+                  <User className="size-4 text-primary" /> {aluno.nomeCompleto}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3">
                   {aluno.cpf && <span>CPF: {aluno.cpf}</span>}
@@ -575,10 +585,6 @@ function TurmaDetalhe() {
               </Link>
 
               <div className="flex items-center gap-2">
-                <Badge variant={aluno.user_id ? "default" : "secondary"}>
-                  {aluno.user_id ? "acesso ativo" : "sem acesso"}
-                </Badge>
-
                 <Button asChild variant="outline" size="sm" className="h-8 text-xs">
                   <Link to="/alunos/$alunoId" params={{ alunoId: aluno.id }}>
                     Contrato & Detalhes
@@ -612,7 +618,6 @@ function TurmaDetalhe() {
         </CardContent>
       </Card>
 
-      {/* ESTATÍSTICAS FINANCEIRAS */}
       <Card className="mt-6 shadow-card">
         <CardHeader>
           <CardTitle className="text-base">
@@ -631,14 +636,13 @@ function TurmaDetalhe() {
               <div className="h-full bg-primary" style={{ width: `${Math.min(percentual, 100)}%` }} />
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {percentual}% do valor contratado já foi recebido · {todasParcelas.filter((p) => p.status === "pago").length}
+              {percentual}% do valor contratado já foi recebido · {todasParcelas.filter((p) => p.status === "Pago").length}
               /{todasParcelas.length} parcelas quitadas
             </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* MODAL: EDITAR TURMA */}
       <Dialog open={openEditTurma} onOpenChange={setOpenEditTurma}>
         {turma && (
           <DialogContent>
@@ -660,11 +664,11 @@ function TurmaDetalhe() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="curso">Curso *</Label>
-                  <Input id="curso" name="curso" defaultValue={turma.curso} required maxLength={120} />
+                  <Input id="curso" name="curso" defaultValue={turma.curso ?? ""} required maxLength={120} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="faculdade">Faculdade *</Label>
-                  <Input id="faculdade" name="faculdade" defaultValue={turma.faculdade} required maxLength={120} />
+                  <Input id="faculdade" name="faculdade" defaultValue={turma.faculdade ?? turma.instituicao ?? ""} required maxLength={120} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="cidade">Cidade</Label>
@@ -680,7 +684,7 @@ function TurmaDetalhe() {
                 <select
                   id="status"
                   name="status"
-                  defaultValue={turma.status}
+                  defaultValue={statusLegacy}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="ativa">Ativa</option>
@@ -701,7 +705,6 @@ function TurmaDetalhe() {
         )}
       </Dialog>
 
-      {/* ALERT DIALOG: EXCLUIR TURMA */}
       <AlertDialog open={openDeleteTurma} onOpenChange={setOpenDeleteTurma}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -723,7 +726,6 @@ function TurmaDetalhe() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* MODAL: EDITAR FORMANDO */}
       <Dialog open={!!editingAluno} onOpenChange={(v) => !v && setEditingAluno(null)}>
         {editingAluno && (
           <DialogContent>
@@ -743,7 +745,7 @@ function TurmaDetalhe() {
                 <Input
                   id="edit_nome_completo"
                   name="nome_completo"
-                  defaultValue={editingAluno.nome_completo}
+                  defaultValue={editingAluno.nomeCompleto}
                   required
                   maxLength={120}
                 />
@@ -769,7 +771,7 @@ function TurmaDetalhe() {
                     maxLength={20}
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="edit_email">E-mail</Label>
                   <Input
                     id="edit_email"
@@ -778,15 +780,6 @@ function TurmaDetalhe() {
                     defaultValue={editingAluno.email || ""}
                     placeholder="aluno@email.com"
                     maxLength={255}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="edit_data_nascimento">Data de Nascimento</Label>
-                  <Input
-                    id="edit_data_nascimento"
-                    name="data_nascimento"
-                    type="date"
-                    defaultValue={editingAluno.data_nascimento || ""}
                   />
                 </div>
               </div>
@@ -803,13 +796,12 @@ function TurmaDetalhe() {
         )}
       </Dialog>
 
-      {/* ALERT DIALOG: EXCLUIR FORMANDO */}
       <AlertDialog open={!!deletingAluno} onOpenChange={(v) => !v && setDeletingAluno(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-destructive">Excluir Formando</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir o formando <strong>{deletingAluno?.nome_completo}</strong>?
+              Tem certeza que deseja excluir o formando <strong>{deletingAluno?.nomeCompleto}</strong>?
               Esta ação removerá o contrato, parcelas e login associados.
             </AlertDialogDescription>
           </AlertDialogHeader>

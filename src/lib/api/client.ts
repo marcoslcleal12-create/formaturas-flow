@@ -84,14 +84,16 @@ export async function apiFetch<T = unknown>(req: ApiRequest): Promise<T> {
     Accept: "application/json",
   };
   if (req.body !== undefined) headers["Content-Type"] = "application/json";
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const resp = await fetch(url, {
+  const init: RequestInit = {
     method: req.method ?? "GET",
     headers,
-    body: req.body === undefined ? undefined : JSON.stringify(req.body),
-    signal: req.signal,
-  });
+  };
+  if (req.body !== undefined) init.body = JSON.stringify(req.body);
+  if (req.signal) init.signal = req.signal;
+
+  const resp = await fetch(url, init);
 
   const text = await resp.text();
   const parsed = text ? safeJsonParse(text) : undefined;
