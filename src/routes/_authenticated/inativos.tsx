@@ -3,13 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { UserCheck, Search, Building2, UserX, AlertCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { listAlunos, reativarAluno as apiReativarAluno } from "@/lib/api/alunos";
+import { listTurmas } from "@/lib/api/turmas";
 import { AppShell } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { brl } from "@/components/app/AppShell";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export const Route = createFileRoute("/_authenticated/inativos")({
   head: () => ({
@@ -21,50 +21,28 @@ export const Route = createFileRoute("/_authenticated/inativos")({
   component: InativosPage,
 });
 
-interface InativoItem {
-  id: string;
-  nome_completo: string;
-  cpf: string | null;
-  whatsapp: string | null;
-  email: string | null;
-  motivo_inativacao: string | null;
-  status: string;
-  updated_at: string;
-  turmas: {
-    id: string;
-    nome: string;
-    curso: string;
-    faculdade: string;
-  } | null;
-}
-
 function InativosPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
 
-  const { data: inativos = [], isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["inativos"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("alunos")
-        .select("*, turmas(id, nome, curso, faculdade)")
-        .eq("status", "inativo")
-        .order("updated_at", { ascending: false });
-      if (error) throw error;
-      return data as InativoItem[];
+      const [alunos, turmas] = await Promise.all([
+        listAlunos({ status: "Inativo" }),
+        listTurmas(),
+      ]);
+      const turmasMap = new Map(turmas.map((t) => [t.id, t]));
+      return { alunos, turmasMap };
     },
   });
 
+  const inativos = data?.alunos ?? [];
+  const turmasMap = data?.turmasMap ?? new Map();
+
   const reativarAluno = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("alunos")
-        .update({
-          status: "ativo",
-          motivo_inativacao: null,
-        })
-        .eq("id", id);
-      if (error) throw error;
+      await apiReativarAluno(id);
     },
     onSuccess: () => {
       toast.success("Cadastro do formando reativado com sucesso!");
@@ -76,10 +54,11 @@ function InativosPage() {
 
   const filteredInativos = inativos.filter((item) => {
     const term = search.toLowerCase();
+    const turma = turmasMap.get(item.turmaId);
     return (
-      item.nome_completo.toLowerCase().includes(term) ||
+      item.nomeCompleto.toLowerCase().includes(term) ||
       (item.cpf && item.cpf.includes(term)) ||
-      (item.turmas?.nome && item.turmas.nome.toLowerCase().includes(term))
+      (turma?.nome && turma.nome.toLowerCase().includes(term))
     );
   });
 
@@ -125,7 +104,9 @@ function InativosPage() {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {filteredInativos.map((item) => (
+          {filteredInativos.map((item) => {
+            const turma = turmasMap.get(item.turmaId);
+            return (
             <Card key={item.id} className="shadow-card border-amber-500/20 bg-amber-500/[0.01]">
               <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between gap-2">
                 <div>
@@ -134,7 +115,7 @@ function InativosPage() {
                     params={{ alunoId: item.id }}
                     className="font-bold text-foreground hover:text-primary transition-colors text-base hover:underline"
                   >
-                    {item.nome_completo}
+                    {item.nomeCompleto}
                   </Link>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     CPF: {item.cpf ? item.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : "Não informado"}
@@ -145,11 +126,11 @@ function InativosPage() {
                 </Badge>
               </CardHeader>
               <CardContent className="p-4 pt-0 space-y-3">
-                {item.turmas && (
+                {turma && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Building2 className="size-3.5 text-muted-foreground/80 shrink-0" />
                     <span>
-                      Original: <strong className="text-foreground">{item.turmas.nome}</strong> ({item.turmas.curso} · {item.turmas.faculdade})
+                      Original: <strong className="text-foreground">{turma.nome}</strong> ({turma.curso} · {turma.faculdade})
                     </span>
                   </div>
                 )}
@@ -160,14 +141,14 @@ function InativosPage() {
                     <div className="space-y-0.5">
                       <p className="font-semibold text-amber-700 dark:text-amber-500">Motivo da Inativação</p>
                       <p className="text-muted-foreground leading-relaxed">
-                        {item.motivo_inativacao || "Nenhum motivo registrado."}
+                        {item.motivoInativacao || "Nenhum motivo registrado."}
                       </p>
                     </div>
                   </div>
                 </div>
 
                 <div className="pt-2 flex items-center justify-between border-t border-border/40 text-[11px] text-muted-foreground">
-                  <span>Inativado em: {new Date(item.updated_at).toLocaleDateString("pt-BR")}</span>
+                  <span>Inativado em: {new Date(item.atualizadoEm).toLocaleDateString("pt-BR")}</span>
                   <Button
                     variant="outline"
                     size="sm"
@@ -180,7 +161,8 @@ function InativosPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </AppShell>

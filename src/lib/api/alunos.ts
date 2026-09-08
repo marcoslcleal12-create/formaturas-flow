@@ -41,7 +41,9 @@ export type AlunoListItem = {
   whatsapp?: string | null;
   telefone?: string | null;
   status: StatusAluno;
+  motivoInativacao?: string | null;
   criadoEm: string;
+  atualizadoEm: string;
 };
 
 export type AlunoInput = {

@@ -40,7 +40,16 @@ import {
   AreaChart,
   Area,
 } from "recharts";
-import { supabase } from "@/integrations/supabase/client";
+import { listAlunos } from "@/lib/api/alunos";
+import { listTurmas } from "@/lib/api/turmas";
+import { listContratos } from "@/lib/api/contratos";
+import {
+  listDespesas,
+  createDespesa,
+  updateDespesa,
+  deleteDespesa,
+  type Despesa,
+} from "@/lib/api/despesas";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -159,82 +168,57 @@ function FluxoCaixaPage() {
   const [searchExtrato, setSearchExtrato] = useState<string>("");
   const [filtroTipoMov, setFiltroTipoMov] = useState<"todos" | "entrada" | "saida">("todos");
 
-  // Modais de Saídas (Despesas)
   const [openNovaSaida, setOpenNovaSaida] = useState(false);
-  const [editingDespesa, setEditingDespesa] = useState<any | null>(null);
-  const [deletingDespesa, setDeletingDespesa] = useState<any | null>(null);
+  const [editingDespesa, setEditingDespesa] = useState<Despesa | null>(null);
+  const [deletingDespesa, setDeletingDespesa] = useState<Despesa | null>(null);
 
-
-
-  // Buscar dados consolidados do Supabase
   const { data, isLoading } = useQuery({
     queryKey: ["fluxo-caixa-data"],
     queryFn: async () => {
-      const [contratos, despesas] = await Promise.all([
-        supabase
-          .from("contratos")
-          .select("*, parcelas(*), alunos(id, nome_completo, turmas(nome))"),
-        supabase
-          .from("despesas")
-          .select("*")
-          .order("vencimento", { ascending: false }),
+      const [alunos, turmas, contratos, despesas] = await Promise.all([
+        listAlunos(),
+        listTurmas(),
+        listContratos(),
+        listDespesas(),
       ]);
-
-      if (contratos.error) throw contratos.error;
-      if (despesas.error) throw despesas.error;
-
-      return {
-        contratos: contratos.data ?? [],
-        despesas: despesas.data ?? [],
-      };
+      const alunosMap = new Map(alunos.map((a) => [a.id, a]));
+      const turmasMap = new Map(turmas.map((t) => [t.id, t]));
+      return { contratos, despesas, alunosMap, turmasMap };
     },
   });
 
   const contratos = data?.contratos ?? [];
   const despesas = data?.despesas ?? [];
+  const alunosMap = data?.alunosMap ?? new Map();
+  const turmasMap = data?.turmasMap ?? new Map();
 
-  // MUTAÇÕES DE SAÍDAS (DESPESAS)
   const salvarSaida = useMutation({
     mutationFn: async (formData: FormData) => {
       const descricao = (formData.get("descricao") as string)?.trim();
       const valor = parseFloat(formData.get("valor") as string);
       const categoria = (formData.get("categoria") as string) || "Outras Despesas";
-      const data_pagamento = (formData.get("data_pagamento") as string) || hoje;
-      const forma_pagamento = (formData.get("forma_pagamento") as string) || "pix";
+      const dataPagamento = (formData.get("data_pagamento") as string) || hoje;
+      const formaPagamento = (formData.get("forma_pagamento") as string) || "pix";
       const observacao = (formData.get("observacao") as string)?.trim() || "";
 
       if (!descricao) throw new Error("Informe a descrição / justificativa da saída.");
       if (isNaN(valor) || valor <= 0) throw new Error("Informe um valor válido maior que zero.");
 
+      const payload = {
+        descricao,
+        valor,
+        categoria,
+        vencimento: dataPagamento,
+        dataPagamento,
+        formaPagamento,
+        observacao,
+        marcarPago: true,
+      };
+
       if (editingDespesa) {
-        const { error } = await supabase
-          .from("despesas")
-          .update({
-            descricao,
-            valor,
-            categoria,
-            vencimento: data_pagamento,
-            data_pagamento,
-            forma_pagamento,
-            observacao,
-            status: "pago",
-          })
-          .eq("id", editingDespesa.id);
-
-        if (error) throw error;
+        await updateDespesa(editingDespesa.id, payload);
       } else {
-        const { error } = await supabase.from("despesas").insert({
-          descricao,
-          valor,
-          categoria,
-          vencimento: data_pagamento,
-          data_pagamento,
-          forma_pagamento,
-          observacao,
-          status: "pago",
-        });
-
-        if (error) throw error;
+        await createDespesa(payload);
       }
     },
     onSuccess: () => {
@@ -255,8 +239,7 @@ function FluxoCaixaPage() {
 
   const excluirSaida = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("despesas").delete().eq("id", id);
-      if (error) throw error;
+      await deleteDespesa(id);
     },
     onSuccess: () => {
       toast.success("Saída removida do fluxo de caixa.");
@@ -273,14 +256,14 @@ function FluxoCaixaPage() {
   const todasMovimentacoes = useMemo<MovimentacaoCaixa[]>(() => {
     const list: MovimentacaoCaixa[] = [];
 
-    // 1. Entradas das Turmas (Parcelas Pagas)
     for (const contrato of contratos) {
-      const alunoNome = contrato.alunos?.nome_completo ?? "Formando";
-      const turmaNome = contrato.alunos?.turmas?.nome ?? "Turma";
+      const aluno = alunosMap.get(contrato.alunoId);
+      const alunoNome = aluno?.nomeCompleto ?? "Formando";
+      const turma = aluno ? turmasMap.get(aluno.turmaId) : undefined;
+      const turmaNome = turma?.nome ?? "Turma";
 
-      // Se houver valor de entrada do contrato
-      if (Number(contrato.valor_entrada) > 0) {
-        const dataEntrada = contrato.created_at ? contrato.created_at.slice(0, 10) : hoje;
+      if (Number(contrato.valorEntrada) > 0) {
+        const dataEntrada = contrato.criadoEm ? contrato.criadoEm.slice(0, 10) : hoje;
         list.push({
           id: `entrada-contrato-${contrato.id}`,
           tipo: "entrada",
@@ -289,19 +272,18 @@ function FluxoCaixaPage() {
           justificativa: `Valor de adesão inicial (${contrato.pacote})`,
           categoria: "Formatura (Entrada Inicial)",
           origem: `Turma: ${turmaNome}`,
-          valor: Number(contrato.valor_entrada),
-          forma_pagamento: contrato.forma_pagamento || "Boleto/Pix",
+          valor: Number(contrato.valorEntrada),
+          forma_pagamento: contrato.formaPagamento || "Boleto/Pix",
           status: "pago",
         });
       }
 
-      // Parcelas pagas
       const parcelas = contrato.parcelas ?? [];
       for (const p of parcelas) {
-        const isPago = p.status === "pago";
+        const isPago = p.status === "Pago";
         if (isPago) {
-          const dataPagto = p.data_pagamento || p.vencimento || hoje;
-          const valorEfetivo = Number(p.valor_pago) > 0 ? Number(p.valor_pago) : Number(p.valor);
+          const dataPagto = p.dataPagamento || p.vencimento || hoje;
+          const valorEfetivo = Number(p.valorPago) > 0 ? Number(p.valorPago) : Number(p.valor);
           list.push({
             id: `parcela-turma-${p.id}`,
             tipo: "entrada",
@@ -311,16 +293,15 @@ function FluxoCaixaPage() {
             categoria: "Formatura (Parcela)",
             origem: `Turma: ${turmaNome}`,
             valor: valorEfetivo,
-            forma_pagamento: contrato.forma_pagamento || "Boleto/Pix",
+            forma_pagamento: contrato.formaPagamento || "Boleto/Pix",
             status: "pago",
           });
         }
       }
     }
 
-    // 3. Saídas / Despesas Lançadas
     for (const d of despesas) {
-      const dataPagto = d.data_pagamento || d.vencimento || hoje;
+      const dataPagto = d.dataPagamento || d.vencimento || hoje;
       list.push({
         id: `saida-${d.id}`,
         tipo: "saida",
@@ -328,17 +309,17 @@ function FluxoCaixaPage() {
         descricao: d.descricao,
         justificativa: d.observacao || "Despesa operacional / fornecedor",
         categoria: d.categoria || "Outras Despesas",
-        origem: d.turma_id ? "Turma Específica" : "Geral / Empresa",
+        origem: d.turmaId ? "Turma Específica" : "Geral / Empresa",
         valor: Number(d.valor),
-        forma_pagamento: d.forma_pagamento || "Pix",
-        status: d.status === "pago" ? "pago" : "pendente",
+        forma_pagamento: d.formaPagamento || "Pix",
+        status: d.status === "Pago" ? "pago" : "pendente",
         rawDespesaId: d.id,
       });
     }
 
     // Ordenar decrescente por data
     return list.sort((a, b) => b.data.localeCompare(a.data));
-  }, [contratos, despesas, hoje]);
+  }, [contratos, despesas, alunosMap, turmasMap, hoje]);
 
   // FILTRAGEM POR PERÍODO (DIA, MÊS, ANO OU TODOS)
   const movimentacoesFiltradas = useMemo(() => {
@@ -587,7 +568,7 @@ function FluxoCaixaPage() {
                         name="data_pagamento"
                         type="date"
                         defaultValue={
-                          editingDespesa?.data_pagamento || editingDespesa?.vencimento || hoje
+                          editingDespesa?.dataPagamento || editingDespesa?.vencimento || hoje
                         }
                         required
                       />
@@ -619,7 +600,7 @@ function FluxoCaixaPage() {
                     <select
                       id="forma_pagamento"
                       name="forma_pagamento"
-                      defaultValue={editingDespesa?.forma_pagamento || "pix"}
+                      defaultValue={editingDespesa?.formaPagamento || "pix"}
                       className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs"
                     >
                       {FORMAS_PAGAMENTO.map((f) => (

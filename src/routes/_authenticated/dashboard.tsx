@@ -16,7 +16,9 @@ import {
   FolderKanban,
   Users,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { listTurmas } from "@/lib/api/turmas";
+import { listAlunos } from "@/lib/api/alunos";
+import { listContratos } from "@/lib/api/contratos";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,39 +47,34 @@ function DashboardPage() {
     setDemandas(loadDemandas());
   }, []);
 
-  // Fetch Turmas, Alunos, Contratos and Parcelas from Supabase
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard-full-data"],
     queryFn: async () => {
       const [turmas, alunos, contratos] = await Promise.all([
-        supabase.from("turmas").select("*, alunos(count)").order("created_at", { ascending: false }),
-        supabase.from("alunos").select("id, turma_id, nome_completo, status"),
-        supabase.from("contratos").select("*, parcelas(*), alunos(id, nome_completo, turmas(nome))"),
+        listTurmas(),
+        listAlunos({ status: "Ativo" }),
+        listContratos(),
       ]);
-      if (turmas.error) throw turmas.error;
-      if (alunos.error) throw alunos.error;
-      if (contratos.error) throw contratos.error;
-      return { turmas: turmas.data, alunos: alunos.data, contratos: contratos.data };
+      return { turmas, alunos, contratos };
     },
   });
 
   const turmas = data?.turmas ?? [];
-  const alunos = (data?.alunos ?? []).filter((a) => a.status !== "inativo");
+  const alunos = data?.alunos ?? [];
   const contratos = data?.contratos ?? [];
   const todasParcelasTurmas = contratos.flatMap((c) => c.parcelas ?? []);
 
-  // --- 1. MÉTRICAS FINANCEIRAS: TURMAS ---
   const turmasContratado = contratos.reduce(
-    (s, c) => s + Number(c.valor_total) - Number(c.desconto),
+    (s, c) => s + Number(c.valorTotal) - Number(c.desconto),
     0
   );
-  const turmasEntradas = contratos.reduce((s, c) => s + Number(c.valor_entrada), 0);
-  const turmasRecebidoParcelas = todasParcelasTurmas.reduce((s, p) => s + Number(p.valor_pago), 0);
+  const turmasEntradas = contratos.reduce((s, c) => s + Number(c.valorEntrada), 0);
+  const turmasRecebidoParcelas = todasParcelasTurmas.reduce((s, p) => s + Number(p.valorPago), 0);
   const turmasRecebidoTotal = turmasEntradas + turmasRecebidoParcelas;
   const turmasFaltaReceber = Math.max(0, turmasContratado - turmasRecebidoTotal);
   const turmasAtrasadas = todasParcelasTurmas
-    .filter((p) => p.status !== "pago" && p.vencimento < hoje)
-    .reduce((s, p) => s + (Number(p.valor) - Number(p.valor_pago)), 0);
+    .filter((p) => p.status !== "Pago" && p.vencimento < hoje)
+    .reduce((s, p) => s + (Number(p.valor) - Number(p.valorPago)), 0);
 
   // --- 2. MÉTRICAS FINANCEIRAS: CASAMENTOS ---
   const casamentos = demandas.filter((d) => d.tipo === "casamento");
@@ -342,9 +339,9 @@ function DashboardPage() {
                   </div>
                   <div className="text-right flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">
-                      {t.alunos?.[0]?.count ?? 0} alunos
+                      {t.totalAlunos ?? 0} alunos
                     </span>
-                    <Badge variant={t.status === "ativa" ? "default" : "secondary"} className="text-[10px]">
+                    <Badge variant={t.status === "Ativa" ? "default" : "secondary"} className="text-[10px]">
                       {t.status}
                     </Badge>
                   </div>

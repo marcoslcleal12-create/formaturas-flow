@@ -20,7 +20,16 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { listAlunos } from "@/lib/api/alunos";
+import { listTurmas } from "@/lib/api/turmas";
+import { listContratos } from "@/lib/api/contratos";
+import { baixarParcela, desfazerBaixa } from "@/lib/api/parcelas";
+import {
+  listDespesas,
+  createDespesa,
+  baixarDespesa as apiBaixarDespesa,
+  desfazerDespesa,
+} from "@/lib/api/despesas";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -125,59 +134,55 @@ function FinanceiroPage() {
     setDemandas(loadDemandas());
   }, []);
 
-  // Fetch Supabase Turma contracts & parcelas
-  const { data: parcelasData, isLoading } = useQuery({
-    queryKey: ["financeiro-parcelas"],
+  const { data: aggr, isLoading } = useQuery({
+    queryKey: ["financeiro-agregado"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("parcelas")
-        .select("*, contratos(id, pacote, forma_pagamento, alunos(id, nome_completo, whatsapp, cpf, turmas(id, nome)))")
-        .order("vencimento");
-      if (error) throw error;
-      return data;
+      const [alunos, turmas, contratos] = await Promise.all([
+        listAlunos(),
+        listTurmas(),
+        listContratos(),
+      ]);
+      const alunosMap = new Map(alunos.map((a) => [a.id, a]));
+      const turmasMap = new Map(turmas.map((t) => [t.id, t]));
+      return { alunosMap, turmasMap, contratos };
     },
   });
 
-  // Fetch Despesas
   const { data: despesasData } = useQuery({
     queryKey: ["despesas"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("despesas").select("*").order("vencimento");
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => listDespesas(),
   });
 
-  const parcelasTurmas = parcelasData ?? [];
   const despesas = despesasData ?? [];
 
-  // 1. Unify all parcelas from Turmas and Demandas
   const listaUnificada: ParcelaUnificada[] = useMemo(() => {
     const list: ParcelaUnificada[] = [];
-
-    // Turmas parcelas
-    parcelasTurmas.forEach((p) => {
-      const isPago = p.status === "pago";
-      const isAtrasado = !isPago && p.vencimento < hoje;
-      list.push({
-        id: `turma-parc-${p.id}`,
-        origem: "turma",
-        clienteNome: p.contratos?.alunos?.nome_completo ?? "Formando",
-        clienteContato: p.contratos?.alunos?.whatsapp ?? p.contratos?.alunos?.cpf ?? null,
-        tituloEvento: p.contratos?.alunos?.turmas?.nome ?? "Turma",
-        pacote: p.contratos?.pacote ?? "Pacote Formatura",
-        numeroParcela: p.numero,
-        valor: Number(p.valor),
-        valorPago: Number(p.valor_pago),
-        vencimento: p.vencimento,
-        dataPagamento: p.data_pagamento ?? null,
-        status: isPago ? "pago" : isAtrasado ? "atrasado" : "pendente",
-        linkUrl: p.contratos?.alunos?.id ? `/alunos/${p.contratos.alunos.id}` : "/turmas",
-      });
-    });
-
+    if (!aggr) return list;
+    for (const contrato of aggr.contratos) {
+      const aluno = aggr.alunosMap.get(contrato.alunoId);
+      const turma = aluno ? aggr.turmasMap.get(aluno.turmaId) : undefined;
+      for (const p of contrato.parcelas ?? []) {
+        const isPago = p.status === "Pago";
+        const isAtrasado = !isPago && p.vencimento < hoje;
+        list.push({
+          id: `turma-parc-${p.id}`,
+          origem: "turma",
+          clienteNome: aluno?.nomeCompleto ?? "Formando",
+          clienteContato: aluno?.whatsapp ?? aluno?.cpf ?? null,
+          tituloEvento: turma?.nome ?? "Turma",
+          pacote: contrato.pacote ?? "Pacote Formatura",
+          numeroParcela: p.numero,
+          valor: Number(p.valor),
+          valorPago: Number(p.valorPago),
+          vencimento: p.vencimento,
+          dataPagamento: p.dataPagamento ?? null,
+          status: isPago ? "pago" : isAtrasado ? "atrasado" : "pendente",
+          linkUrl: aluno ? `/alunos/${aluno.id}` : "/turmas",
+        });
+      }
+    }
     return list;
-  }, [parcelasTurmas, demandas, hoje]);
+  }, [aggr, hoje]);
 
   // Lista dinâmica de anos a partir das parcelas existentes
   const anosDisponiveis = useMemo(() => {
@@ -205,11 +210,11 @@ function FinanceiroPage() {
   const atrasadasTotal = listaUnificada.filter((p) => p.status === "atrasado");
   const totalInadimplencia = atrasadasTotal.reduce((s, p) => s + (p.valor - p.valorPago), 0);
 
-  const saidasPagas = despesas.filter((d) => d.status === "pago");
+  const saidasPagas = despesas.filter((d) => d.status === "Pago");
   const totalSaidas = saidasPagas.reduce((s, d) => s + Number(d.valor), 0);
   const saldoLiquido = totalEntradas - totalSaidas;
 
-  const saidasAtrasadas = despesas.filter((d) => d.status !== "pago" && d.vencimento < hoje);
+  const saidasAtrasadas = despesas.filter((d) => d.status !== "Pago" && d.vencimento < hoje);
 
   // Filtered parcelas list com Busca, Grupo, Mês, Ano e Status
   const parcelasFiltradas = useMemo(() => {
@@ -252,19 +257,16 @@ function FinanceiroPage() {
     setFiltroStatus("todos");
   };
 
-  // Mutations
   const criarDespesa = useMutation({
     mutationFn: async (form: FormData) => {
       const valor = Number(String(form.get("valor") ?? "0").replace(",", ".")) || 0;
       if (valor <= 0) throw new Error("Informe um valor válido.");
-      const { error } = await supabase.from("despesas").insert({
+      await createDespesa({
         descricao: String(form.get("descricao") ?? "").trim(),
         categoria: String(form.get("categoria") ?? "geral").trim() || "geral",
         valor,
         vencimento: String(form.get("vencimento") ?? hoje),
-        status: "pendente",
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Despesa / Saída registrada com sucesso!");
@@ -276,39 +278,32 @@ function FinanceiroPage() {
 
   const baixarDespesa = useMutation({
     mutationFn: async ({ id, pago }: { id: string; pago: boolean }) => {
-      const { error } = await supabase
-        .from("despesas")
-        .update(
-          pago
-            ? { status: "pendente", data_pagamento: null }
-            : { status: "pago", data_pagamento: hoje }
-        )
-        .eq("id", id);
-      if (error) throw error;
+      if (pago) {
+        await desfazerDespesa(id);
+      } else {
+        await apiBaixarDespesa(id, hoje);
+      }
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["despesas"] }),
     onError: (error) => toast.error((error as Error).message),
   });
 
-  // Toggle Parcela Status Handler
   const handleToggleParcelaStatus = async (item: ParcelaUnificada) => {
     if (item.origem === "turma") {
       const realId = item.id.replace("turma-parc-", "");
       const isPago = item.status === "pago";
-      const { error } = await supabase
-        .from("parcelas")
-        .update(
-          isPago
-            ? { status: "pendente", valor_pago: 0, data_pagamento: null }
-            : { status: "pago", valor_pago: item.valor, data_pagamento: hoje }
-        )
-        .eq("id", realId);
-      if (error) {
-        toast.error("Erro ao atualizar parcela: " + error.message);
+      try {
+        if (isPago) {
+          await desfazerBaixa(realId);
+        } else {
+          await baixarParcela(realId, { valorPago: item.valor, dataPagamento: hoje });
+        }
+      } catch (err) {
+        toast.error("Erro ao atualizar parcela: " + (err as Error).message);
         return;
       }
       toast.success("Status da parcela atualizado!");
-      void queryClient.invalidateQueries({ queryKey: ["financeiro-parcelas"] });
+      void queryClient.invalidateQueries({ queryKey: ["financeiro-agregado"] });
     } else if (item.demandaId) {
       const all = loadDemandas();
       const updated = all.map((d) => {
@@ -793,7 +788,7 @@ function FinanceiroPage() {
                   <p className="text-xs text-muted-foreground py-8 text-center">Nenhuma saída registrada.</p>
                 )}
                 {despesas.map((d) => {
-                  const pago = d.status === "pago";
+                  const pago = d.status === "Pago";
                   const atrasada = !pago && d.vencimento < hoje;
                   return (
                     <div
@@ -804,7 +799,7 @@ function FinanceiroPage() {
                         <p className="font-semibold text-sm">{d.descricao}</p>
                         <p className="text-xs text-muted-foreground">
                           Categoria: <span className="uppercase font-mono">{d.categoria}</span> · Vencimento: {dataBR(d.vencimento)}
-                          {d.data_pagamento && ` · Pago em ${dataBR(d.data_pagamento)}`}
+                          {d.dataPagamento && ` · Pago em ${dataBR(d.dataPagamento)}`}
                         </p>
                       </div>
 
