@@ -1,9 +1,34 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { apiFetch } from "@/lib/api/client";
 import { criarCobranca, buscarCobrancaPorRef, type TipoPagamento } from "@/lib/api/pagamentos";
 
 export type MetodoPagamento = "pix" | "cartao" | "boleto" | "checkout";
+
+type ParcelaContext = {
+  id: string;
+  numero: number;
+  valor: number;
+  valorPago: number;
+  vencimento: string;
+  dataPagamento?: string | null;
+  status: string;
+  pspProvider?: string | null;
+  pspStatus?: string | null;
+  linkPagamento?: string | null;
+  contratoId: string;
+  contratoPacote?: string | null;
+  alunoId: string;
+  alunoNomeCompleto: string;
+  alunoCpf?: string | null;
+  alunoEmail?: string | null;
+  alunoWhatsapp?: string | null;
+  alunoTelefone?: string | null;
+  turmaId: string;
+  turmaNome: string;
+  turmaCurso?: string | null;
+  tipoEvento: "Formatura" | "Casamento" | "Outro";
+};
 
 const iniciarSchema = z.object({
   parcelaId: z.string().uuid(),
@@ -11,85 +36,32 @@ const iniciarSchema = z.object({
   numParcelasCartao: z.number().int().positive().optional(),
 });
 
-/**
- * Inicia a cobrança de uma parcela chamando a API FormaturasFlow (VPS).
- *
- * Fluxo:
- * 1. RLS Supabase garante que o usuário só acessa parcelas permitidas.
- * 2. Busca dados agregados (parcela, contrato, aluno, turma) para montar
- *    o payload de cobrança standalone.
- * 3. Chama POST /api/v1/cobrancas na API — o roteador escolhe o PSP correto
- *    (Asaas para casamento/cartão/checkout, Cora para PIX/boleto formatura).
- * 4. Retorna o link de pagamento para o front abrir/compartilhar.
- *
- * Idempotência: a API guarda `externalReference = parcelaId`, então chamar
- * de novo com o mesmo parcelaId retorna a cobrança existente sem duplicar.
- */
 export const iniciarPagamento = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: { parcelaId: string; metodo: MetodoPagamento; numParcelasCartao?: number }) =>
+  .validator((input: { parcelaId: string; metodo: MetodoPagamento; numParcelasCartao?: number }) =>
     iniciarSchema.parse(input),
   )
-  .handler(async ({ data, context }) => {
-    const { data: parcela, error } = await context.supabase
-      .from("parcelas")
-      .select(`
-        id, numero, valor, valor_pago, vencimento, status,
-        contratos!inner (
-          id, pacote,
-          alunos!inner (
-            id, nome_completo, cpf, email, telefone, whatsapp,
-            turmas!inner ( id, nome, curso )
-          )
-        )
-      `)
-      .eq("id", data.parcelaId)
-      .maybeSingle();
-    if (error) throw error;
-    if (!parcela) throw new Error("Parcela não encontrada.");
-    if (parcela.status === "pago") throw new Error("Esta parcela já está quitada.");
+  .handler(async ({ data }) => {
+    const p = await apiFetch<ParcelaContext>({
+      method: "GET",
+      path: `/api/v1/parcelas/${data.parcelaId}`,
+    });
+    if (p.status === "Pago") throw new Error("Esta parcela já está quitada.");
 
-    type Selecionado = {
-      id: string;
-      numero: number;
-      valor: number | string;
-      valor_pago: number | string;
-      vencimento: string;
-      status: string;
-      contratos: {
-        pacote?: string | null;
-        alunos: {
-          nome_completo: string;
-          cpf?: string | null;
-          email?: string | null;
-          telefone?: string | null;
-          whatsapp?: string | null;
-          turmas: { nome: string; curso?: string | null };
-        };
-      };
-    };
-    const p = parcela as unknown as Selecionado;
-    const aluno = p.contratos.alunos;
-    const turma = aluno.turmas;
-
-    const saldo = Number(p.valor) - Number(p.valor_pago);
-    const tipoEvento =
-      /casamento/i.test(turma.nome ?? "") || /casamento/i.test(turma.curso ?? "")
-        ? "Casamento"
-        : "Formatura";
+    const saldo = Number(p.valor) - Number(p.valorPago);
+    const tipoEvento = p.tipoEvento === "Casamento" ? "Casamento" : "Formatura";
 
     const cobranca = await criarCobranca({
       externalReference: p.id,
-      clienteNome: aluno.nome_completo,
-      clienteCpf: aluno.cpf ?? undefined,
-      clienteEmail: aluno.email ?? undefined,
-      clienteWhatsapp: aluno.whatsapp ?? undefined,
-      clienteTelefone: aluno.telefone ?? undefined,
+      clienteNome: p.alunoNomeCompleto,
+      ...(p.alunoCpf ? { clienteCpf: p.alunoCpf } : {}),
+      ...(p.alunoEmail ? { clienteEmail: p.alunoEmail } : {}),
+      ...(p.alunoWhatsapp ? { clienteWhatsapp: p.alunoWhatsapp } : {}),
+      ...(p.alunoTelefone ? { clienteTelefone: p.alunoTelefone } : {}),
       valor: saldo,
       vencimento: p.vencimento,
-      descricao: `Parcela ${p.numero} · ${p.contratos.pacote ?? "Pacote"} · ${turma.nome}`,
+      descricao: `Parcela ${p.numero} · ${p.contratoPacote ?? "Pacote"} · ${p.turmaNome}`,
       tipo: data.metodo as TipoPagamento,
-      numParcelasCartao: data.numParcelasCartao,
+      ...(data.numParcelasCartao ? { numParcelasCartao: data.numParcelasCartao } : {}),
       tipoEvento,
     });
 
@@ -114,14 +86,8 @@ export const iniciarPagamento = createServerFn({ method: "POST" })
 
 const consultarSchema = z.object({ parcelaId: z.string().uuid() });
 
-/**
- * Consulta o status atual da cobrança de uma parcela na API FormaturasFlow.
- * O webhook do PSP já atualiza cobrancas.status automaticamente quando
- * o pagamento é confirmado — este endpoint só serve pra o front ler.
- */
 export const consultarStatusPagamento = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: { parcelaId: string }) => consultarSchema.parse(input))
+  .validator((input: { parcelaId: string }) => consultarSchema.parse(input))
   .handler(async ({ data }) => {
     const cobranca = await buscarCobrancaPorRef(data.parcelaId);
     if (!cobranca) return { encontrada: false as const };

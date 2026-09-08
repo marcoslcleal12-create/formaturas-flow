@@ -1,16 +1,16 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import { 
-  ArrowLeft, 
-  KeyRound, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  CreditCard, 
-  User, 
-  AlertCircle, 
-  FileText, 
+import {
+  ArrowLeft,
+  KeyRound,
+  Plus,
+  Edit,
+  Trash2,
+  CreditCard,
+  User,
+  AlertCircle,
+  FileText,
   CheckCircle2,
   GraduationCap,
   Package,
@@ -26,8 +26,25 @@ import {
 import { toast } from "sonner";
 import { z } from "zod";
 import { useServerFn } from "@tanstack/react-start";
-import { supabase } from "@/integrations/supabase/client";
 import { criarAcessoFormando } from "@/lib/alunos.functions";
+import {
+  getAluno,
+  updateAluno as apiUpdateAluno,
+  deleteAluno as apiDeleteAluno,
+  inativarAluno as apiInativarAluno,
+  reativarAluno as apiReativarAluno,
+  updateAlunoLinks as apiUpdateAlunoLinks,
+  type Aluno,
+} from "@/lib/api/alunos";
+import {
+  listContratos,
+  createContrato,
+  updateContrato as apiUpdateContrato,
+  deleteContrato as apiDeleteContrato,
+  type Contrato,
+  type Parcela,
+} from "@/lib/api/contratos";
+import { baixarParcela, desfazerBaixa } from "@/lib/api/parcelas";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { CLAUSULAS_PADRAO, FORMAS_PAGAMENTO, gerarContratoPdf } from "@/lib/contrato-modelo";
 import { Button } from "@/components/ui/button";
@@ -91,6 +108,15 @@ const alunoEditSchema = z.object({
   endereco: z.string().trim().max(200).optional(),
 });
 
+type TurmaLite = {
+  id?: string;
+  nome?: string | null;
+  curso?: string | null;
+  faculdade?: string | null;
+  semestre?: string | null;
+  observacoes?: string | null;
+};
+
 function num(form: FormData, key: string): number {
   const v = form.get(key);
   if (!v) return 0;
@@ -126,28 +152,22 @@ function AlunoDetalhe() {
   const { data } = useQuery({
     queryKey: ["aluno", alunoId],
     queryFn: async () => {
-      const aluno = await supabase
-        .from("alunos")
-        .select("*, turmas(id, nome, curso, faculdade, semestre, observacoes)")
-        .eq("id", alunoId)
-        .maybeSingle();
-      if (aluno.error) throw aluno.error;
-      const contrato = await supabase
-        .from("contratos")
-        .select("*, parcelas(*)")
-        .eq("aluno_id", alunoId)
-        .maybeSingle();
-      if (contrato.error) throw contrato.error;
-      return { aluno: aluno.data, contrato: contrato.data };
+      const [aluno, contratos] = await Promise.all([
+        getAluno(alunoId),
+        listContratos({ alunoId }),
+      ]);
+      const contrato: Contrato | null = contratos[0] ?? null;
+      return { aluno, contrato };
     },
   });
 
   const aluno = data?.aluno;
   const contrato = data?.contrato;
-  const parcelas = [...(contrato?.parcelas ?? [])].sort((a, b) => a.numero - b.numero);
+  const turma: TurmaLite | undefined = aluno?.turma as TurmaLite | undefined;
+  const parcelas: Parcela[] = [...(contrato?.parcelas ?? [])].sort((a, b) => a.numero - b.numero);
 
-  const cursoLower = (aluno?.turmas?.curso || "").toLowerCase();
-  const obsLower = (aluno?.turmas?.observacoes || "").toLowerCase();
+  const cursoLower = (turma?.curso || "").toLowerCase();
+  const obsLower = (turma?.observacoes || "").toLowerCase();
   const isCasamento = cursoLower.includes("casamento") || obsLower.includes("casamento");
   const isAniversario =
     cursoLower.includes("aniversario") ||
@@ -178,12 +198,11 @@ function AlunoDetalhe() {
   const dataLabel = isCasamento || isAniversario || isEnsaio ? "Data" : "Semestre";
 
   useEffect(() => {
-    if (contrato?.texto_contrato) {
-      setTextoContrato(contrato.texto_contrato);
+    if (contrato?.textoContrato) {
+      setTextoContrato(contrato.textoContrato);
     }
-  }, [contrato?.texto_contrato]);
+  }, [contrato?.textoContrato]);
 
-  // Update Aluno Details Mutation
   const updateAluno = useMutation({
     mutationFn: async (form: FormData) => {
       const parsed = alunoEditSchema.parse({
@@ -196,19 +215,15 @@ function AlunoDetalhe() {
         endereco: form.get("endereco") || undefined,
       });
 
-      const { error } = await supabase
-        .from("alunos")
-        .update({
-          nome_completo: parsed.nome_completo,
-          cpf: parsed.cpf ? parsed.cpf.replace(/\D/g, "") : null,
-          whatsapp: parsed.whatsapp ?? null,
-          email: parsed.email || null,
-          data_nascimento: parsed.data_nascimento || null,
-          cidade: parsed.cidade ?? null,
-          endereco: parsed.endereco ?? null,
-        })
-        .eq("id", alunoId);
-      if (error) throw error;
+      await apiUpdateAluno(alunoId, {
+        nomeCompleto: parsed.nome_completo,
+        cpf: parsed.cpf ? parsed.cpf.replace(/\D/g, "") : null,
+        whatsapp: parsed.whatsapp ?? null,
+        email: parsed.email || null,
+        dataNascimento: parsed.data_nascimento || null,
+        cidade: parsed.cidade ?? null,
+        endereco: parsed.endereco ?? null,
+      });
     },
     onSuccess: () => {
       toast.success("Dados do formando atualizados com sucesso!");
@@ -220,29 +235,15 @@ function AlunoDetalhe() {
       toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
   });
 
-  // Update Links Aluno Mutation
   const updateLinksAluno = useMutation({
-    mutationFn: async (data: {
-      link_fotos_selecionadas?: string | null;
-      prazo_fotos_selecionadas?: number | null;
-      fotos_liberadas?: boolean;
-      link_aprovacao_album?: string | null;
-      album_liberado?: boolean;
+    mutationFn: async (input: {
+      linkFotosSelecionadas?: string | null;
+      prazoFotosSelecionadas?: number | null;
+      fotosLiberadas?: boolean;
+      linkAprovacaoAlbum?: string | null;
+      albumLiberado?: boolean;
     }) => {
-      const updatePayload: any = { ...data };
-      if (data.prazo_fotos_selecionadas) {
-        const date = new Date();
-        date.setDate(date.getDate() + data.prazo_fotos_selecionadas);
-        updatePayload.vencimento_fotos_selecionadas = date.toISOString().split("T")[0];
-      } else if (data.prazo_fotos_selecionadas === null) {
-        updatePayload.vencimento_fotos_selecionadas = null;
-      }
-
-      const { error } = await supabase
-        .from("alunos")
-        .update(updatePayload)
-        .eq("id", alunoId);
-      if (error) throw error;
+      await apiUpdateAlunoLinks(alunoId, input);
     },
     onSuccess: () => {
       toast.success("Dados de seleção atualizados com sucesso!");
@@ -251,12 +252,10 @@ function AlunoDetalhe() {
     onError: (error) => toast.error(`Erro ao salvar: ${(error as Error).message}`),
   });
 
-  // Delete Aluno Mutation
   const deleteAluno = useMutation({
     mutationFn: async () => {
-      const turmaId = aluno?.turma_id;
-      const { error } = await supabase.from("alunos").delete().eq("id", alunoId);
-      if (error) throw error;
+      const turmaId = aluno?.turmaId;
+      await apiDeleteAluno(alunoId);
       return turmaId;
     },
     onSuccess: (turmaId) => {
@@ -271,28 +270,9 @@ function AlunoDetalhe() {
     onError: (error) => toast.error(`Erro ao excluir formando: ${(error as Error).message}`),
   });
 
-  // Inativar Aluno Mutation
   const inativarAluno = useMutation({
     mutationFn: async (motivo: string) => {
-      // 1. Inativar cadastro do aluno
-      const { error } = await supabase
-        .from("alunos")
-        .update({
-          status: "inativo",
-          motivo_inativacao: motivo.trim() || null,
-        })
-        .eq("id", alunoId);
-      if (error) throw error;
-
-      // 2. Deletar boletos futuros / parcelas não pagas (preservar as pagas para o fluxo de caixa)
-      if (contrato?.id) {
-        const { error: delError } = await supabase
-          .from("parcelas")
-          .delete()
-          .eq("contrato_id", contrato.id)
-          .neq("status", "pago");
-        if (delError) throw delError;
-      }
+      await apiInativarAluno(alunoId, motivo.trim() || undefined);
     },
     onSuccess: () => {
       toast.success("Cadastro inativado! Boletos futuros não pagos foram cancelados.");
@@ -307,17 +287,9 @@ function AlunoDetalhe() {
     onError: (error) => toast.error(`Erro ao inativar cliente: ${(error as Error).message}`),
   });
 
-  // Reativar Aluno Mutation
   const reativarAluno = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from("alunos")
-        .update({
-          status: "ativo",
-          motivo_inativacao: null,
-        })
-        .eq("id", alunoId);
-      if (error) throw error;
+      await apiReativarAluno(alunoId);
     },
     onSuccess: () => {
       toast.success("Cadastro do formando reativado com sucesso!");
@@ -327,7 +299,6 @@ function AlunoDetalhe() {
     onError: (error) => toast.error(`Erro ao reativar cliente: ${(error as Error).message}`),
   });
 
-  // Generate Access Mutation
   const gerarAcesso = useMutation({
     mutationFn: () => criarAcesso({ data: { alunoId } }),
     onSuccess: (res) => {
@@ -339,7 +310,6 @@ function AlunoDetalhe() {
     onError: (error) => toast.error((error as Error).message),
   });
 
-  // Create Contract Mutation
   const criarContrato = useMutation({
     mutationFn: async (form: FormData) => {
       const parsed = contratoSchema.parse({
@@ -356,53 +326,18 @@ function AlunoDetalhe() {
       const financiado = parsed.valor_total - parsed.desconto - parsed.valor_entrada;
       if (financiado <= 0) throw new Error("O valor a parcelar precisa ser maior que zero.");
 
-      const { data: novo, error } = await supabase
-        .from("contratos")
-        .insert({
-          aluno_id: alunoId,
-          turma_id: aluno?.turma_id ?? null,
-          pacote: parsed.pacote,
-          valor_total: parsed.valor_total,
-          desconto: parsed.desconto,
-          valor_entrada: parsed.valor_entrada,
-          num_parcelas: parsed.num_parcelas,
-          dia_vencimento: parsed.dia_vencimento,
-          forma_pagamento: parsed.forma_pagamento,
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
-
-      const base = Math.floor((financiado / parsed.num_parcelas) * 100) / 100;
-      const resto = Math.round((financiado - base * parsed.num_parcelas) * 100) / 100;
-      const inicio = new Date(`${parsed.primeiro_vencimento}T12:00:00`);
-
-      const linhas = Array.from({ length: parsed.num_parcelas }, (_, i) => {
-        const venc = new Date(inicio);
-        venc.setMonth(venc.getMonth() + i);
-        return {
-          contrato_id: novo.id,
-          numero: i + 1,
-          valor: i === 0 ? Math.round((base + resto) * 100) / 100 : base,
-          vencimento: venc.toISOString().slice(0, 10),
-        };
+      await createContrato({
+        alunoId,
+        pacote: parsed.pacote,
+        valorTotal: parsed.valor_total,
+        valorEntrada: parsed.valor_entrada,
+        desconto: parsed.desconto,
+        numParcelas: parsed.num_parcelas,
+        diaVencimento: parsed.dia_vencimento,
+        formaPagamento: parsed.forma_pagamento,
+        dataContrato: new Date().toISOString().slice(0, 10),
+        primeiroVencimento: parsed.primeiro_vencimento,
       });
-      const hojeIso = new Date().toISOString().slice(0, 10);
-      const comEntrada =
-        parsed.valor_entrada > 0
-          ? [
-              {
-                contrato_id: novo.id,
-                numero: 0,
-                valor: parsed.valor_entrada,
-                vencimento: hojeIso,
-              },
-              ...linhas,
-            ]
-          : linhas;
-
-      const { error: parcelasError } = await supabase.from("parcelas").insert(comEntrada);
-      if (parcelasError) throw parcelasError;
     },
     onSuccess: () => {
       toast.success("Contrato e parcelas gerados com sucesso!");
@@ -414,7 +349,6 @@ function AlunoDetalhe() {
       toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
   });
 
-  // Edit Contract Mutation
   const updateContrato = useMutation({
     mutationFn: async (form: FormData) => {
       if (!contrato) return;
@@ -429,60 +363,18 @@ function AlunoDetalhe() {
         forma_pagamento: String(form.get("forma_pagamento") ?? "boleto"),
       });
 
-      const { error: updateError } = await supabase
-        .from("contratos")
-        .update({
-          pacote: parsed.pacote,
-          valor_total: parsed.valor_total,
-          desconto: parsed.desconto,
-          valor_entrada: parsed.valor_entrada,
-          num_parcelas: parsed.num_parcelas,
-          dia_vencimento: parsed.dia_vencimento,
-          forma_pagamento: parsed.forma_pagamento,
-        })
-        .eq("id", contrato.id);
-      if (updateError) throw updateError;
-
-      // Check if user wants to recalculate parcelas
       const recalcular = form.get("recalcular_parcelas") === "sim";
-      if (recalcular) {
-        const financiado = parsed.valor_total - parsed.desconto - parsed.valor_entrada;
-        if (financiado <= 0) throw new Error("O valor a parcelar precisa ser maior que zero.");
-
-        // Delete previous parcelas
-        await supabase.from("parcelas").delete().eq("contrato_id", contrato.id);
-
-        const base = Math.floor((financiado / parsed.num_parcelas) * 100) / 100;
-        const resto = Math.round((financiado - base * parsed.num_parcelas) * 100) / 100;
-        const inicio = new Date(`${parsed.primeiro_vencimento}T12:00:00`);
-
-        const linhas = Array.from({ length: parsed.num_parcelas }, (_, i) => {
-          const venc = new Date(inicio);
-          venc.setMonth(venc.getMonth() + i);
-          return {
-            contrato_id: contrato.id,
-            numero: i + 1,
-            valor: i === 0 ? Math.round((base + resto) * 100) / 100 : base,
-            vencimento: venc.toISOString().slice(0, 10),
-          };
-        });
-        const hojeIso = new Date().toISOString().slice(0, 10);
-        const comEntrada =
-          parsed.valor_entrada > 0
-            ? [
-                {
-                  contrato_id: contrato.id,
-                  numero: 0,
-                  valor: parsed.valor_entrada,
-                  vencimento: hojeIso,
-                },
-                ...linhas,
-              ]
-            : linhas;
-
-        const { error: parcelasError } = await supabase.from("parcelas").insert(comEntrada);
-        if (parcelasError) throw parcelasError;
-      }
+      await apiUpdateContrato(contrato.id, {
+        pacote: parsed.pacote,
+        valorTotal: parsed.valor_total,
+        valorEntrada: parsed.valor_entrada,
+        desconto: parsed.desconto,
+        numParcelas: parsed.num_parcelas,
+        diaVencimento: parsed.dia_vencimento,
+        formaPagamento: parsed.forma_pagamento,
+        recalcularParcelas: recalcular,
+        primeiroVencimento: recalcular ? parsed.primeiro_vencimento : null,
+      });
     },
     onSuccess: () => {
       toast.success("Contrato e pacote atualizados com sucesso!");
@@ -494,15 +386,10 @@ function AlunoDetalhe() {
       toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
   });
 
-  // Delete Contract Mutation
   const deleteContrato = useMutation({
     mutationFn: async () => {
       if (!contrato) return;
-      // Delete parcelas first
-      await supabase.from("parcelas").delete().eq("contrato_id", contrato.id);
-      // Delete contrato
-      const { error } = await supabase.from("contratos").delete().eq("id", contrato.id);
-      if (error) throw error;
+      await apiDeleteContrato(contrato.id);
     },
     onSuccess: () => {
       toast.success("Contrato excluído com sucesso. Agora você pode criar um novo.");
@@ -513,22 +400,13 @@ function AlunoDetalhe() {
     onError: (error) => toast.error(`Erro ao excluir contrato: ${(error as Error).message}`),
   });
 
-  // Toggle Parcela Status Mutation
   const toggleParcela = useMutation({
     mutationFn: async ({ id, valor, pago }: { id: string; valor: number; pago: boolean }) => {
-      const { error } = await supabase
-        .from("parcelas")
-        .update(
-          pago
-            ? { status: "pendente", valor_pago: 0, data_pagamento: null }
-            : {
-                status: "pago",
-                valor_pago: valor,
-                data_pagamento: new Date().toISOString().slice(0, 10),
-              },
-        )
-        .eq("id", id);
-      if (error) throw error;
+      if (pago) {
+        await desfazerBaixa(id);
+      } else {
+        await baixarParcela(id, { valorPago: valor, dataPagamento: new Date().toISOString().slice(0, 10) });
+      }
     },
     onSuccess: () => {
       toast.success("Status da parcela atualizado!");
@@ -538,15 +416,20 @@ function AlunoDetalhe() {
     onError: (error) => toast.error((error as Error).message),
   });
 
-  // Salvar Cláusulas do Contrato
   const salvarContratoTexto = useMutation({
     mutationFn: async () => {
       if (!contrato) return;
-      const { error } = await supabase
-        .from("contratos")
-        .update({ texto_contrato: textoContrato })
-        .eq("id", contrato.id);
-      if (error) throw error;
+      await apiUpdateContrato(contrato.id, {
+        pacote: contrato.pacote,
+        valorTotal: contrato.valorTotal,
+        valorEntrada: contrato.valorEntrada,
+        desconto: contrato.desconto,
+        numParcelas: contrato.numParcelas,
+        diaVencimento: contrato.diaVencimento ?? undefined,
+        formaPagamento: contrato.formaPagamento,
+        textoContrato,
+        recalcularParcelas: false,
+      });
     },
     onSuccess: () => {
       toast.success("Cláusulas do contrato salvas com sucesso!");
@@ -560,48 +443,47 @@ function AlunoDetalhe() {
     if (!aluno || !contrato) return;
     gerarContratoPdf({
       aluno: {
-        nome_completo: aluno.nome_completo,
-        cpf: aluno.cpf,
-        endereco: aluno.endereco,
-        cidade: aluno.cidade,
-        telefone: aluno.whatsapp || aluno.telefone,
-        email: aluno.email,
-        turma_nome: aluno.turmas?.nome || null,
+        nome_completo: aluno.nomeCompleto,
+        cpf: aluno.cpf ?? null,
+        endereco: aluno.endereco ?? null,
+        cidade: aluno.cidade ?? null,
+        telefone: aluno.whatsapp || aluno.telefone || null,
+        email: aluno.email ?? null,
+        turma_nome: turma?.nome ?? null,
       },
       contrato: {
-        pacote: contrato.pacote,
-        valor_total: Number(contrato.valor_total),
+        pacote: contrato.pacote ?? "",
+        valor_total: Number(contrato.valorTotal),
         desconto: Number(contrato.desconto || 0),
-        valor_entrada: Number(contrato.valor_entrada || 0),
-        dia_vencimento: contrato.dia_vencimento || 10,
-        data_contrato: contrato.data_contrato || hoje,
-        forma_pagamento: contrato.forma_pagamento || "boleto",
-        autoriza_imagem: contrato.autoriza_imagem !== false,
+        valor_entrada: Number(contrato.valorEntrada || 0),
+        dia_vencimento: contrato.diaVencimento ?? 10,
+        data_contrato: contrato.dataContrato || hoje,
+        forma_pagamento: contrato.formaPagamento || "boleto",
+        autoriza_imagem: contrato.autorizaImagem !== false,
       },
       parcelas: parcelas.map((p) => ({
         numero: p.numero,
         valor: Number(p.valor),
         vencimento: p.vencimento,
-        status: p.status,
-        data_pagamento: p.data_pagamento,
-        forma_pagamento: p.forma_pagamento,
+        status: p.status.toLowerCase(),
+        data_pagamento: p.dataPagamento ?? null,
+        forma_pagamento: p.formaPagamento ?? null,
       })),
-      texto: textoContrato || contrato.texto_contrato || CLAUSULAS_PADRAO,
+      texto: textoContrato || contrato.textoContrato || CLAUSULAS_PADRAO,
     });
     toast.success("Download do contrato em PDF iniciado!");
   };
 
   const hoje = new Date().toISOString().slice(0, 10);
-  const totalPago = parcelas.reduce((s, p) => s + Number(p.valor_pago || (p.status === "pago" ? p.valor : 0)), 0);
+  const totalPago = parcelas.reduce((s, p) => s + Number(p.valorPago || (p.status === "Pago" ? p.valor : 0)), 0);
   const totalParcelas = parcelas.reduce((s, p) => s + Number(p.valor), 0);
-  const atrasadas = parcelas.filter((p) => p.status !== "pago" && p.vencimento < hoje);
+  const atrasadas = parcelas.filter((p) => p.status !== "Pago" && p.vencimento < hoje);
 
-  // Métricas do Distrato / Inativação
-  const parcelasPagas = parcelas.filter((p) => p.status === "pago");
+  const parcelasPagas = parcelas.filter((p) => p.status === "Pago");
   const parcelasPagasSemEntrada = parcelasPagas.filter((p) => p.numero > 0).length;
-  const numParcelasContrato = contrato?.num_parcelas ?? 0;
+  const numParcelasContrato = contrato?.numParcelas ?? 0;
   const boletosCanceladosCount = Math.max(0, numParcelasContrato - parcelasPagasSemEntrada);
-  const multaRescisao = contrato ? Number(contrato.valor_total) * 0.30 : 0;
+  const multaRescisao = contrato ? Number(contrato.valorTotal) * 0.30 : 0;
   const custoCancelamentoBoletos = boletosCanceladosCount * 5;
   const totalEncargosRescisao = multaRescisao + custoCancelamentoBoletos;
   const saldoDistrato = totalEncargosRescisao - totalPago;
@@ -610,7 +492,7 @@ function AlunoDetalhe() {
     <AppShell>
       <Link
         to="/turmas/$turmaId"
-        params={{ turmaId: aluno?.turma_id ?? "" }}
+        params={{ turmaId: aluno?.turmaId ?? "" }}
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
       >
         <ArrowLeft className="size-4" /> Voltar para {eventoLabel.toLowerCase()}
@@ -619,17 +501,17 @@ function AlunoDetalhe() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">{aluno?.nome_completo ?? "Formando"}</h1>
-            {aluno?.status === "inativo" ? (
+            <h1 className="text-2xl font-bold">{aluno?.nomeCompleto ?? "Formando"}</h1>
+            {aluno?.status === "Inativo" ? (
               <Badge variant="destructive" className="bg-amber-600 hover:bg-amber-700 text-white">Inativo</Badge>
-            ) : aluno?.user_id ? (
-              <Badge className="bg-emerald-600">Acesso Ativo (CPF: {aluno.login_usuario})</Badge>
+            ) : aluno?.userId ? (
+              <Badge className="bg-emerald-600">Acesso Ativo (CPF: {aluno.loginUsuario})</Badge>
             ) : (
               <Badge variant="secondary">Sem acesso gerado</Badge>
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {aluno?.turmas?.nome ?? "Sem turma"} · CPF: {aluno?.cpf ?? "Não informado"} · Tel: {aluno?.whatsapp ?? "—"}
+            {turma?.nome ?? "Sem turma"} · CPF: {aluno?.cpf ?? "Não informado"} · Tel: {aluno?.whatsapp ?? "—"}
           </p>
         </div>
 
@@ -647,7 +529,7 @@ function AlunoDetalhe() {
             <Trash2 className="size-4" /> Excluir {contratanteLabel}
           </Button>
 
-          {aluno?.status === "inativo" ? (
+          {aluno?.status === "Inativo" ? (
             <Button
               variant="outline"
               size="sm"
@@ -668,7 +550,7 @@ function AlunoDetalhe() {
             </Button>
           )}
 
-          {!aluno?.user_id && (
+          {!aluno?.userId && (
             <Button size="sm" onClick={() => gerarAcesso.mutate()} disabled={gerarAcesso.isPending} className="gap-1.5">
               <KeyRound className="size-4" /> Liberar Acesso (Login CPF)
             </Button>
@@ -676,9 +558,8 @@ function AlunoDetalhe() {
         </div>
       </div>
 
-      {aluno?.status === "inativo" ? (
+      {aluno?.status === "Inativo" ? (
         <div className="space-y-6">
-          {/* CARD DE DADOS DO CANCELAMENTO E DISTRATO CONTRATUAL */}
           <Card className="shadow-card border-amber-500/50 bg-card">
             <CardHeader className="border-b bg-amber-500/10 dark:bg-amber-950/20 pb-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -690,18 +571,17 @@ function AlunoDetalhe() {
                 </Badge>
               </div>
               <CardDescription className="text-xs text-muted-foreground mt-1">
-                Motivo da inativação: <span className="font-semibold text-foreground">"{aluno.motivo_inativacao || "Não informado"}"</span>
+                Motivo da inativação: <span className="font-semibold text-foreground">"{aluno.motivoInativacao || "Não informado"}"</span>
               </CardDescription>
             </CardHeader>
 
             <CardContent className="p-6 space-y-6">
               {contrato ? (
                 <>
-                  {/* GRID DE RESUMO FINANCEIRO DO DISTRATO */}
                   <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="p-4 rounded-xl border bg-muted/30 space-y-1">
                       <p className="text-xs text-muted-foreground uppercase font-medium">Valor do Contrato</p>
-                      <p className="text-lg font-bold">{brl(Number(contrato.valor_total))}</p>
+                      <p className="text-lg font-bold">{brl(Number(contrato.valorTotal))}</p>
                       <p className="text-[11px] text-muted-foreground">Pacote: {contrato.pacote}</p>
                     </div>
 
@@ -730,7 +610,6 @@ function AlunoDetalhe() {
                     </div>
                   </div>
 
-                  {/* DEMONSTRATIVO FINANCEIRO DETALHADO DO FECHAMENTO */}
                   <div className="rounded-xl border p-4 bg-muted/20 space-y-3">
                     <h3 className="text-sm font-semibold flex items-center gap-2">
                       <Calculator className="size-4 text-gold" /> Demonstrativo de Fechamento / Rescisão
@@ -762,7 +641,6 @@ function AlunoDetalhe() {
                     </div>
                   </div>
 
-                  {/* HISTÓRICO DE PARCELAS PAGAS MANTIDAS NO CAIXA */}
                   <div>
                     <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
                       <CheckCircle2 className="size-3.5 text-emerald-600" />
@@ -775,7 +653,7 @@ function AlunoDetalhe() {
                             <div>
                               <span className="font-semibold">{p.numero === 0 ? "Entrada" : `Parcela ${p.numero}`}</span> · {brl(Number(p.valor))}
                               <p className="text-[11px] text-muted-foreground">
-                                Pago em: {p.data_pagamento ? new Date(`${p.data_pagamento}T12:00:00`).toLocaleDateString("pt-BR") : "—"}
+                                Pago em: {p.dataPagamento ? new Date(`${p.dataPagamento}T12:00:00`).toLocaleDateString("pt-BR") : "—"}
                               </p>
                             </div>
                             <Badge className="bg-emerald-600">pago</Badge>
@@ -793,7 +671,6 @@ function AlunoDetalhe() {
             </CardContent>
           </Card>
 
-          {/* SEÇÃO DO CONTRATO */}
           <Card className="shadow-card">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -848,7 +725,7 @@ function AlunoDetalhe() {
         </div>
       ) : (
         <>
-          {!aluno?.user_id && (
+          {!aluno?.userId && (
             <Card className="mb-6 shadow-card border-gold/40 bg-gold/5">
               <CardContent className="pt-6 text-sm text-foreground flex items-center gap-3">
                 <KeyRound className="size-5 text-gold shrink-0" />
@@ -859,10 +736,8 @@ function AlunoDetalhe() {
             </Card>
           )}
 
-          {/* LINHA DE DADOS */}
           {aluno && (
             <div className="mb-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-start">
-              {/* Card 1: Dados do Contratante / Formando */}
               <Card className="shadow-card">
                 <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
                   <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
@@ -880,7 +755,7 @@ function AlunoDetalhe() {
                 </CardHeader>
                 {showDados && (
                   <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
-                    <Info label="Nome Completo" value={aluno.nome_completo} />
+                    <Info label="Nome Completo" value={aluno.nomeCompleto} />
                     <Info label="CPF" value={aluno.cpf} />
                     {aluno.rg && <Info label="RG" value={aluno.rg} />}
                     <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
@@ -888,14 +763,13 @@ function AlunoDetalhe() {
                     <Info label="E-mail" value={aluno.email} />
                     <Info label="Endereço" value={aluno.endereco} />
                     <Info label="Cidade" value={aluno.cidade} />
-                    {aluno.data_nascimento && (
-                      <Info label="Data Nasc." value={new Date(aluno.data_nascimento + "T12:00:00").toLocaleDateString("pt-BR")} />
+                    {aluno.dataNascimento && (
+                      <Info label="Data Nasc." value={new Date(aluno.dataNascimento + "T12:00:00").toLocaleDateString("pt-BR")} />
                     )}
                   </CardContent>
                 )}
               </Card>
 
-              {/* Card 2: Dados do Ensaio / Evento / Turma */}
               <Card className="shadow-card">
                 <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
                   <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
@@ -916,15 +790,14 @@ function AlunoDetalhe() {
                 </CardHeader>
                 {showTurma && (
                   <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
-                    <Info label={eventoLabel} value={aluno.turmas?.nome} />
-                    <Info label={tipoDemandaLabel} value={aluno.turmas?.curso} />
-                    <Info label={localLabel} value={aluno.turmas?.faculdade} />
-                    {aluno.turmas?.semestre && <Info label={dataLabel} value={aluno.turmas?.semestre} />}
+                    <Info label={eventoLabel} value={turma?.nome} />
+                    <Info label={tipoDemandaLabel} value={turma?.curso} />
+                    <Info label={localLabel} value={turma?.faculdade} />
+                    {turma?.semestre && <Info label={dataLabel} value={turma?.semestre} />}
                   </CardContent>
                 )}
               </Card>
 
-              {/* Card 3: Pacote Escolhido */}
               <Card className="shadow-card">
                 <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
                   <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
@@ -945,12 +818,12 @@ function AlunoDetalhe() {
                     {contrato ? (
                       <>
                         <Info label="Pacote" value={contrato.pacote} />
-                        <Info label="Valor Total" value={brl(Number(contrato.valor_total))} />
+                        <Info label="Valor Total" value={brl(Number(contrato.valorTotal))} />
                         {Number(contrato.desconto) > 0 && <Info label="Desconto" value={brl(Number(contrato.desconto))} />}
-                        {Number(contrato.valor_entrada) > 0 && <Info label="Entrada" value={brl(Number(contrato.valor_entrada))} />}
-                        <Info label="Condição" value={`${contrato.num_parcelas}x no ${contrato.forma_pagamento || "boleto"}`} />
-                        <Info label="Dia Vencimento" value={`Todo dia ${contrato.dia_vencimento || 10}`} />
-                        {aluno?.turmas?.semestre && <Info label="Semestre" value={aluno.turmas.semestre} />}
+                        {Number(contrato.valorEntrada) > 0 && <Info label="Entrada" value={brl(Number(contrato.valorEntrada))} />}
+                        <Info label="Condição" value={`${contrato.numParcelas}x no ${contrato.formaPagamento || "boleto"}`} />
+                        <Info label="Dia Vencimento" value={`Todo dia ${contrato.diaVencimento || 10}`} />
+                        {turma?.semestre && <Info label="Semestre" value={turma.semestre} />}
                       </>
                     ) : (
                       <p className="text-muted-foreground text-xs py-2">Nenhum pacote contratado no momento.</p>
@@ -959,7 +832,6 @@ function AlunoDetalhe() {
                 )}
               </Card>
 
-              {/* Card 4: Contrato */}
               <Card className="shadow-card">
                 <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
                   <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
@@ -1043,10 +915,8 @@ function AlunoDetalhe() {
             </div>
           )}
 
-          {/* LINHA DE SELEÇÃO */}
           {aluno && (
             <div className="mb-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 items-start">
-              {/* Card 1: Seleção */}
               <Card className="shadow-card h-full flex flex-col">
                 <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3">
                   <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
@@ -1074,7 +944,6 @@ function AlunoDetalhe() {
                 )}
               </Card>
 
-              {/* Card 2: Minhas Fotos Selecionadas */}
               <Card className="shadow-card h-full flex flex-col">
                 <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
                   <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
@@ -1092,43 +961,43 @@ function AlunoDetalhe() {
                 </CardHeader>
                 {showSel2 && (
                   <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1">
-                    <form 
+                    <form
                       className="space-y-3 flex flex-col h-full"
                       onSubmit={(e) => {
                         e.preventDefault();
                         const form = new FormData(e.currentTarget);
                         const prazoStr = form.get("prazo_fotos_selecionadas") as string;
                         updateLinksAluno.mutate({
-                          link_fotos_selecionadas: form.get("link_fotos_selecionadas") as string || null,
-                          prazo_fotos_selecionadas: prazoStr ? parseInt(prazoStr, 10) : null,
-                          fotos_liberadas: form.get("fotos_liberadas") === "on",
+                          linkFotosSelecionadas: (form.get("link_fotos_selecionadas") as string) || null,
+                          prazoFotosSelecionadas: prazoStr ? parseInt(prazoStr, 10) : null,
+                          fotosLiberadas: form.get("fotos_liberadas") === "on",
                         });
                       }}
                     >
                       <div className="space-y-1">
                         <Label className="text-xs">Link de Hospedagem</Label>
-                        <Input 
-                          name="link_fotos_selecionadas" 
-                          className="h-8 text-xs" 
-                          placeholder="https://..." 
-                          defaultValue={aluno.link_fotos_selecionadas || ""} 
+                        <Input
+                          name="link_fotos_selecionadas"
+                          className="h-8 text-xs"
+                          placeholder="https://..."
+                          defaultValue={aluno.linkFotosSelecionadas || ""}
                         />
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Prazo de Vencimento (Dias)</Label>
-                        <Input 
-                          name="prazo_fotos_selecionadas" 
-                          type="number" 
-                          className="h-8 text-xs" 
+                        <Input
+                          name="prazo_fotos_selecionadas"
+                          type="number"
+                          className="h-8 text-xs"
                           placeholder="Ex: 150"
-                          defaultValue={aluno.prazo_fotos_selecionadas || ""} 
+                          defaultValue={aluno.prazoFotosSelecionadas ?? ""}
                         />
                       </div>
                       <div className="flex items-center space-x-2 pt-1 pb-1">
-                        <Switch 
-                          id="fotos_liberadas" 
-                          name="fotos_liberadas" 
-                          defaultChecked={aluno.fotos_liberadas || false} 
+                        <Switch
+                          id="fotos_liberadas"
+                          name="fotos_liberadas"
+                          defaultChecked={aluno.fotosLiberadas || false}
                         />
                         <Label htmlFor="fotos_liberadas" className="text-xs font-medium cursor-pointer">
                           Liberar visualização
@@ -1143,7 +1012,6 @@ function AlunoDetalhe() {
                 )}
               </Card>
 
-              {/* Card 3: Aprovação de Álbum */}
               <Card className="shadow-card h-full flex flex-col">
                 <CardHeader className="flex flex-row items-center gap-2 p-4 pb-3 flex-wrap">
                   <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
@@ -1161,31 +1029,31 @@ function AlunoDetalhe() {
                 </CardHeader>
                 {showSel3 && (
                   <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1">
-                    <form 
+                    <form
                       className="space-y-3 h-full flex flex-col"
                       onSubmit={(e) => {
                         e.preventDefault();
                         const form = new FormData(e.currentTarget);
                         updateLinksAluno.mutate({
-                          link_aprovacao_album: form.get("link_aprovacao_album") as string || null,
-                          album_liberado: form.get("album_liberado") === "on",
+                          linkAprovacaoAlbum: (form.get("link_aprovacao_album") as string) || null,
+                          albumLiberado: form.get("album_liberado") === "on",
                         });
                       }}
                     >
                       <div className="space-y-1">
                         <Label className="text-xs">Link do Álbum</Label>
-                        <Input 
-                          name="link_aprovacao_album" 
-                          className="h-8 text-xs" 
-                          placeholder="https://..." 
-                          defaultValue={aluno.link_aprovacao_album || ""} 
+                        <Input
+                          name="link_aprovacao_album"
+                          className="h-8 text-xs"
+                          placeholder="https://..."
+                          defaultValue={aluno.linkAprovacaoAlbum || ""}
                         />
                       </div>
                       <div className="flex items-center space-x-2 pt-1 pb-1">
-                        <Switch 
-                          id="album_liberado" 
-                          name="album_liberado" 
-                          defaultChecked={aluno.album_liberado || false} 
+                        <Switch
+                          id="album_liberado"
+                          name="album_liberado"
+                          defaultChecked={aluno.albumLiberado || false}
                         />
                         <Label htmlFor="album_liberado" className="text-xs font-medium cursor-pointer">
                           Liberar visualização
@@ -1202,7 +1070,6 @@ function AlunoDetalhe() {
             </div>
           )}
 
-          {/* SEÇÃO DO CONTRATO E FINANCEIRO */}
           <div className="mb-6 flex flex-wrap items-center gap-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <CreditCard className="size-5 text-gold" /> Contrato, Pacote & Parcelamento
@@ -1290,13 +1157,12 @@ function AlunoDetalhe() {
           {contrato && (
             <div className="space-y-6">
               <div className="flex flex-wrap items-start gap-3">
-                <Resumo titulo="Valor do contrato" valor={brl(Number(contrato.valor_total))} icon={FileText} />
+                <Resumo titulo="Valor do contrato" valor={brl(Number(contrato.valorTotal))} icon={FileText} />
                 <Resumo titulo="Total parcelado" valor={brl(totalParcelas)} icon={CreditCard} />
                 <Resumo titulo="Recebido" valor={brl(totalPago)} icon={CheckCircle2} />
                 <Resumo titulo="Em atraso" valor={String(atrasadas.length)} destaque={atrasadas.length > 0} icon={AlertCircle} />
               </div>
 
-              {/* PARCELAS */}
               <Card className="shadow-card">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center justify-between">
@@ -1308,12 +1174,13 @@ function AlunoDetalhe() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {parcelas.map((p) => {
-                    const pago = p.status === "pago";
+                    const pago = p.status === "Pago";
                     const atrasada = !pago && p.vencimento < hoje;
                     return (
                       <div
                         key={p.id}
-                        className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                        onClick={() => toggleParcela.mutate({ id: p.id, valor: Number(p.valor), pago })}
+                        className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors cursor-pointer ${
                           atrasada
                             ? "border-destructive/60 bg-destructive/10 text-destructive font-medium"
                             : "border-border hover:bg-muted/40"
@@ -1325,7 +1192,7 @@ function AlunoDetalhe() {
                           </p>
                           <p className={`text-xs ${atrasada ? "text-destructive/80 font-medium" : "text-muted-foreground"}`}>
                             Vencimento: {new Date(`${p.vencimento}T12:00:00`).toLocaleDateString("pt-BR")}
-                            {p.data_pagamento && ` · Pago em: ${new Date(`${p.data_pagamento}T12:00:00`).toLocaleDateString("pt-BR")}`}
+                            {p.dataPagamento && ` · Pago em: ${new Date(`${p.dataPagamento}T12:00:00`).toLocaleDateString("pt-BR")}`}
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
@@ -1346,7 +1213,6 @@ function AlunoDetalhe() {
         </>
       )}
 
-      {/* MODAL: EDITAR DADOS DO CONTRATANTE / FORMANDO */}
       <Dialog open={openEditAluno} onOpenChange={setOpenEditAluno}>
         {aluno && (
           <DialogContent>
@@ -1363,7 +1229,7 @@ function AlunoDetalhe() {
             >
               <div className="space-y-1.5">
                 <Label htmlFor="nome_completo">Nome completo *</Label>
-                <Input id="nome_completo" name="nome_completo" defaultValue={aluno.nome_completo} required maxLength={120} />
+                <Input id="nome_completo" name="nome_completo" defaultValue={aluno.nomeCompleto} required maxLength={120} />
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -1380,7 +1246,7 @@ function AlunoDetalhe() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="data_nascimento">Data de Nascimento</Label>
-                  <Input id="data_nascimento" name="data_nascimento" type="date" defaultValue={aluno.data_nascimento || ""} />
+                  <Input id="data_nascimento" name="data_nascimento" type="date" defaultValue={aluno.dataNascimento || ""} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="cidade">Cidade</Label>
@@ -1404,7 +1270,6 @@ function AlunoDetalhe() {
         )}
       </Dialog>
 
-      {/* ALERT DIALOG: EXCLUIR CONTRATANTE / FORMANDO */}
       <AlertDialog open={openDeleteAluno} onOpenChange={setOpenDeleteAluno}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1412,7 +1277,7 @@ function AlunoDetalhe() {
               <AlertCircle className="size-5" /> Excluir {contratanteLabel}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir o formando <strong>{aluno?.nome_completo}</strong>?
+              Tem certeza que deseja excluir o formando <strong>{aluno?.nomeCompleto}</strong>?
               Esta ação removerá o contrato, histórico de parcelas e login de acesso associados.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1428,7 +1293,6 @@ function AlunoDetalhe() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* MODAL: EDITAR CONTRATO & PACOTE */}
       <Dialog open={openEditContrato} onOpenChange={setOpenEditContrato}>
         {contrato && (
           <DialogContent className="max-w-xl">
@@ -1443,20 +1307,20 @@ function AlunoDetalhe() {
                 updateContrato.mutate(new FormData(e.currentTarget));
               }}
             >
-              <Campo name="pacote" label="Pacote Contratado *" defaultValue={contrato.pacote} required />
+              <Campo name="pacote" label="Pacote Contratado *" defaultValue={contrato.pacote ?? ""} required />
               <div className="grid gap-3 sm:grid-cols-2">
-                <Campo name="valor_total" label="Valor total (R$) *" type="number" step="0.01" defaultValue={String(contrato.valor_total)} required />
+                <Campo name="valor_total" label="Valor total (R$) *" type="number" step="0.01" defaultValue={String(contrato.valorTotal)} required />
                 <Campo name="desconto" label="Desconto (R$)" type="number" step="0.01" defaultValue={String(contrato.desconto ?? 0)} />
-                <Campo name="valor_entrada" label="Entrada (R$)" type="number" step="0.01" defaultValue={String(contrato.valor_entrada ?? 0)} />
-                <Campo name="num_parcelas" label="Nº de parcelas *" type="number" defaultValue={String(contrato.num_parcelas)} required />
-                <Campo name="dia_vencimento" label="Dia de vencimento *" type="number" defaultValue={String(contrato.dia_vencimento ?? 10)} required />
-                <Campo name="primeiro_vencimento" label="1º vencimento *" type="date" defaultValue={contrato.data_contrato || hoje} required />
+                <Campo name="valor_entrada" label="Entrada (R$)" type="number" step="0.01" defaultValue={String(contrato.valorEntrada ?? 0)} />
+                <Campo name="num_parcelas" label="Nº de parcelas *" type="number" defaultValue={String(contrato.numParcelas)} required />
+                <Campo name="dia_vencimento" label="Dia de vencimento *" type="number" defaultValue={String(contrato.diaVencimento ?? 10)} required />
+                <Campo name="primeiro_vencimento" label="1º vencimento *" type="date" defaultValue={contrato.dataContrato || hoje} required />
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="forma_pagamento">Forma de pagamento</Label>
                   <select
                     id="forma_pagamento"
                     name="forma_pagamento"
-                    defaultValue={contrato.forma_pagamento}
+                    defaultValue={contrato.formaPagamento ?? "boleto"}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
                     {FORMAS_PAGAMENTO.map((f) => (
@@ -1486,7 +1350,6 @@ function AlunoDetalhe() {
         )}
       </Dialog>
 
-      {/* ALERT DIALOG: EXCLUIR CONTRATO */}
       <AlertDialog open={openDeleteContrato} onOpenChange={setOpenDeleteContrato}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1510,7 +1373,6 @@ function AlunoDetalhe() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* DIALOG: INATIVAR ALUNO */}
       <Dialog open={openInativarAluno} onOpenChange={setOpenInativarAluno}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -1520,7 +1382,7 @@ function AlunoDetalhe() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              <strong>Tem certeza que deseja inativar o cadastro de {aluno?.nome_completo}?</strong><br />
+              <strong>Tem certeza que deseja inativar o cadastro de {aluno?.nomeCompleto}?</strong><br />
               Você está prestes a inativar este formando. Ele não aparecerá mais na listagem ativa da turma.
             </p>
             <div className="space-y-1.5">
@@ -1569,7 +1431,7 @@ function Resumo({ titulo, valor, destaque, icon: Icon }: { titulo: string; valor
   );
 }
 
-function Info({ label, value }: { label: string; value?: string | null }) {
+function Info({ label, value }: { label: string; value?: string | null | undefined }) {
   if (!value) return null;
   return (
     <div className="flex justify-between py-1 border-b border-border/40 last:border-0">

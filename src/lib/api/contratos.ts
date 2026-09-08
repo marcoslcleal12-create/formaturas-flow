@@ -30,7 +30,10 @@ export type Contrato = {
   pacote?: string | null;
   valorTotal: number;
   valorEntrada: number;
+  desconto: number;
   numParcelas: number;
+  diaVencimento?: number | null;
+  autorizaImagem: boolean;
   formaPagamento?: string | null;
   dataContrato: string;
   textoContrato?: string | null;
@@ -44,14 +47,35 @@ export type ContratoInput = {
   pacote?: string | null | undefined;
   valorTotal: number;
   valorEntrada: number;
+  desconto?: number | undefined;
   numParcelas: number;
+  diaVencimento?: number | undefined;
+  autorizaImagem?: boolean | undefined;
   formaPagamento?: string | null | undefined;
   dataContrato: string;
   primeiroVencimento: string;
 };
 
-export async function listContratos(opts?: { signal?: AbortSignal }): Promise<Contrato[]> {
-  return apiFetch<Contrato[]>({ method: "GET", path: "/api/v1/contratos", ...(opts?.signal ? { signal: opts.signal } : {}) });
+export type ContratoUpdateInput = {
+  pacote?: string | null | undefined;
+  valorTotal: number;
+  valorEntrada: number;
+  desconto?: number | undefined;
+  numParcelas: number;
+  diaVencimento?: number | undefined;
+  autorizaImagem?: boolean | undefined;
+  formaPagamento?: string | null | undefined;
+  textoContrato?: string | null | undefined;
+  recalcularParcelas?: boolean | undefined;
+  primeiroVencimento?: string | null | undefined;
+};
+
+export async function listContratos(opts?: { alunoId?: string; turmaId?: string; signal?: AbortSignal }): Promise<Contrato[]> {
+  const params = new URLSearchParams();
+  if (opts?.alunoId) params.set("alunoId", opts.alunoId);
+  if (opts?.turmaId) params.set("turmaId", opts.turmaId);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return apiFetch<Contrato[]>({ method: "GET", path: `/api/v1/contratos${qs}`, ...(opts?.signal ? { signal: opts.signal } : {}) });
 }
 
 export async function getContrato(id: string, opts?: { signal?: AbortSignal }): Promise<Contrato> {
@@ -60,6 +84,14 @@ export async function getContrato(id: string, opts?: { signal?: AbortSignal }): 
 
 export async function createContrato(input: ContratoInput): Promise<Contrato> {
   return apiFetch<Contrato>({ method: "POST", path: "/api/v1/contratos", body: input });
+}
+
+export async function updateContrato(id: string, input: ContratoUpdateInput): Promise<Contrato> {
+  return apiFetch<Contrato>({ method: "PUT", path: `/api/v1/contratos/${id}`, body: input });
+}
+
+export async function deleteContrato(id: string): Promise<void> {
+  await apiFetch({ method: "DELETE", path: `/api/v1/contratos/${id}` });
 }
 
 export async function listParcelas(opts?: { status?: string; signal?: AbortSignal }): Promise<Parcela[]> {
