@@ -15,7 +15,13 @@ import {
   Camera,
 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  listAgendaEventos,
+  createAgendaEvento,
+  updateAgendaEvento,
+  deleteAgendaEvento,
+  type AgendaEvento as ApiAgendaEvento,
+} from "@/lib/api/agenda";
 import { AppShell } from "@/components/app/AppShell";
 
 export const Route = createFileRoute("/_authenticated/agenda")({
@@ -26,18 +32,7 @@ export const Route = createFileRoute("/_authenticated/agenda")({
   component: AgendaPage,
 });
 
-// ─── tipos ────────────────────────────────────────────────────────────────────
-interface AgendaEvento {
-  id: string;
-  descricao: string;
-  empresa_tipo: "jm" | "outra";
-  empresa_nome: string;
-  local_evento: string;
-  cidade: string;
-  fotografo: string;
-  data_evento: string;
-  created_at?: string;
-}
+type AgendaEvento = ApiAgendaEvento;
 
 interface FormState {
   descricao: string;
@@ -87,37 +82,27 @@ function AgendaPage() {
   // confirmação exclusão
   const [deletandoId, setDeletandoId] = useState<string | null>(null);
 
-  // ── query ──
   const { data: eventos = [], isLoading } = useQuery<AgendaEvento[]>({
     queryKey: ["agenda"],
-    queryFn: async () => {
-      const res = await (supabase.from as any)("agenda_eventos")
-        .select("*")
-        .order("data_evento", { ascending: true });
-      if (res.error) { console.warn(res.error.message); return []; }
-      return res.data ?? [];
-    },
+    queryFn: () => listAgendaEventos(),
   });
 
-  // ── mutação salvar ──
   const salvar = useMutation({
     mutationFn: async (f: FormState) => {
       const payload = {
-        titulo: f.descricao.trim(),        // NOT NULL na tabela original
+        titulo: f.descricao.trim(),
         descricao: f.descricao.trim(),
-        empresa_tipo: f.empresa_tipo,
-        empresa_nome: f.empresa_tipo === "jm" ? "JM Formaturas & Eventos" : f.empresa_nome.trim(),
-        local_evento: f.local_evento.trim(),
+        empresaTipo: f.empresa_tipo,
+        empresaNome: f.empresa_tipo === "jm" ? "JM Formaturas & Eventos" : f.empresa_nome.trim(),
+        localEvento: f.local_evento.trim(),
         cidade: f.cidade.trim(),
         fotografo: f.fotografo.trim(),
-        data_evento: f.data_evento,
+        dataEvento: f.data_evento,
       };
       if (editId) {
-        const { error } = await (supabase.from as any)("agenda_eventos").update(payload).eq("id", editId);
-        if (error) throw error;
+        await updateAgendaEvento(editId, payload);
       } else {
-        const { error } = await (supabase.from as any)("agenda_eventos").insert([payload]);
-        if (error) throw error;
+        await createAgendaEvento(payload);
       }
     },
     onSuccess: () => {
@@ -128,11 +113,9 @@ function AgendaPage() {
     onError: (e: any) => toast.error(e.message ?? "Erro ao salvar evento."),
   });
 
-  // ── mutação excluir ──
   const excluir = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase.from as any)("agenda_eventos").delete().eq("id", id);
-      if (error) throw error;
+      await deleteAgendaEvento(id);
     },
     onSuccess: () => {
       toast.success("Evento removido.");
@@ -168,8 +151,8 @@ function AgendaPage() {
   const porData = useMemo(() => {
     const m: Record<string, AgendaEvento[]> = {};
     for (const ev of eventos) {
-      if (!m[ev.data_evento]) m[ev.data_evento] = [];
-      m[ev.data_evento].push(ev);
+      const bucket = (m[ev.dataEvento] ??= []);
+      bucket.push(ev);
     }
     return m;
   }, [eventos]);
@@ -177,7 +160,7 @@ function AgendaPage() {
   // ── eventos do mês corrente (lista) ──
   const eventosMes = useMemo(() => {
     const pref = `${ano}-${String(mes+1).padStart(2,"0")}`;
-    return eventos.filter(e => e.data_evento?.startsWith(pref));
+    return eventos.filter(e => e.dataEvento?.startsWith(pref));
   }, [eventos, ano, mes]);
 
   // ── abrir modal ──
@@ -190,13 +173,13 @@ function AgendaPage() {
   const abrirEditar = (ev: AgendaEvento) => {
     setEditId(ev.id);
     setForm({
-      descricao:    ev.descricao,
-      empresa_tipo: ev.empresa_tipo,
-      empresa_nome: ev.empresa_nome,
-      local_evento: ev.local_evento ?? "",
+      descricao:    ev.descricao ?? "",
+      empresa_tipo: ev.empresaTipo,
+      empresa_nome: ev.empresaNome,
+      local_evento: ev.localEvento ?? "",
       cidade:       ev.cidade ?? "",
       fotografo:    ev.fotografo ?? "",
-      data_evento:  ev.data_evento,
+      data_evento:  ev.dataEvento,
     });
     setModalAberto(true);
   };
@@ -247,13 +230,13 @@ function AgendaPage() {
         <div className="rounded-xl border bg-emerald-50 dark:bg-emerald-950/20 p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">JM Formaturas</p>
           <p className="mt-1 text-3xl font-bold text-emerald-600 dark:text-emerald-400">
-            {eventosMes.filter(e => e.empresa_tipo === "jm").length}
+            {eventosMes.filter(e => e.empresaTipo === "jm").length}
           </p>
         </div>
         <div className="rounded-xl border bg-purple-50 dark:bg-purple-950/20 p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-400">Outras Empresas</p>
           <p className="mt-1 text-3xl font-bold text-purple-600 dark:text-purple-400">
-            {eventosMes.filter(e => e.empresa_tipo === "outra").length}
+            {eventosMes.filter(e => e.empresaTipo === "outra").length}
           </p>
         </div>
       </div>
@@ -312,14 +295,14 @@ function AgendaPage() {
                             key={ev.id}
                             onClick={() => abrirEditar(ev)}
                             className={`w-full rounded-xl p-3 text-left shadow-sm transition hover:brightness-95 active:scale-[0.98] ${
-                              ev.empresa_tipo === "jm"
+                              ev.empresaTipo === "jm"
                                 ? "bg-emerald-100 dark:bg-emerald-900/50"
                                 : "bg-purple-100 dark:bg-purple-900/50"
                             }`}
                           >
                             {/* fotógrafo em destaque */}
                             <div className={`flex items-center gap-1.5 font-bold text-sm leading-tight mb-1 ${
-                              ev.empresa_tipo === "jm"
+                              ev.empresaTipo === "jm"
                                 ? "text-emerald-900 dark:text-emerald-100"
                                 : "text-purple-900 dark:text-purple-100"
                             }`}>
@@ -328,7 +311,7 @@ function AgendaPage() {
                             </div>
                             {/* descrição */}
                             <div className={`text-sm font-semibold leading-snug break-words ${
-                              ev.empresa_tipo === "jm"
+                              ev.empresaTipo === "jm"
                                 ? "text-emerald-800 dark:text-emerald-200"
                                 : "text-purple-800 dark:text-purple-200"
                             }`}>
@@ -337,7 +320,7 @@ function AgendaPage() {
                             {/* local */}
                             {ev.cidade && (
                               <div className={`text-xs font-medium leading-snug mt-1 break-words ${
-                                ev.empresa_tipo === "jm"
+                                ev.empresaTipo === "jm"
                                   ? "text-emerald-700 dark:text-emerald-300"
                                   : "text-purple-700 dark:text-purple-300"
                               }`}>
@@ -366,10 +349,10 @@ function AgendaPage() {
             ) : (
               <div className="space-y-3">
                 {eventosMes.map(ev => {
-                  const dataFormatada = new Date(`${ev.data_evento}T12:00:00`).toLocaleDateString("pt-BR", {
+                  const dataFormatada = new Date(`${ev.dataEvento}T12:00:00`).toLocaleDateString("pt-BR", {
                     weekday: "long", day: "2-digit", month: "long",
                   });
-                  const isJM = ev.empresa_tipo === "jm";
+                  const isJM = ev.empresaTipo === "jm";
                   return (
                     <div
                       key={ev.id}
@@ -384,11 +367,11 @@ function AgendaPage() {
                           </span>
                           <span className="flex items-center gap-1">
                             <Building2 className="size-3.5" />
-                            {ev.empresa_nome}
+                            {ev.empresaNome}
                           </span>
                           <span className="flex items-center gap-1">
                             <MapPin className="size-3.5" />
-                            {ev.local_evento}{ev.cidade ? `, ${ev.cidade}` : ""}
+                            {ev.localEvento}{ev.cidade ? `, ${ev.cidade}` : ""}
                           </span>
                           <span className="flex items-center gap-1">
                             <Camera className="size-3.5" />

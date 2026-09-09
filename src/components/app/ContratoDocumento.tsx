@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileDown, Save, Eye } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { updateContrato } from "@/lib/api/contratos";
 import {
   CLAUSULAS_PADRAO,
   FORMAS_PAGAMENTO,
@@ -29,6 +29,7 @@ type Contrato = {
   valor_total: number;
   desconto: number;
   valor_entrada: number;
+  num_parcelas: number;
   dia_vencimento: number;
   data_contrato: string;
   forma_pagamento: string | null;
@@ -66,11 +67,18 @@ export function ContratoDocumento({
 
   const salvar = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from("contratos")
-        .update({ texto_contrato: texto, forma_pagamento: forma, autoriza_imagem: autoriza })
-        .eq("id", contrato.id);
-      if (error) throw error;
+      await updateContrato(contrato.id, {
+        pacote: contrato.pacote,
+        valorTotal: Number(contrato.valor_total),
+        valorEntrada: Number(contrato.valor_entrada),
+        desconto: Number(contrato.desconto),
+        numParcelas: contrato.num_parcelas,
+        diaVencimento: contrato.dia_vencimento,
+        formaPagamento: forma,
+        autorizaImagem: autoriza,
+        textoContrato: texto,
+        recalcularParcelas: false,
+      });
     },
     onSuccess: () => {
       toast.success("Contrato salvo");

@@ -31,7 +31,19 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  listTurmas,
+  createTurma,
+  updateTurma,
+  deleteTurma as apiDeleteTurma,
+} from "@/lib/api/turmas";
+import {
+  listAlunos,
+  createAluno,
+  deleteAluno as apiDeleteAluno,
+} from "@/lib/api/alunos";
+import { listContratos, createContrato } from "@/lib/api/contratos";
+import { baixarParcela, desfazerBaixa } from "@/lib/api/parcelas";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -186,18 +198,10 @@ export function DemandaEventManager({
     },
   }[themeColor];
 
-  // 1. QUERY: Lista de Eventos do tipo (busca na tabela 'turmas' filtrando pela categoria ou observações)
   const { data: eventos = [], isLoading: isLoadingEventos } = useQuery({
     queryKey: ["eventos-demanda", tipo],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("turmas")
-        .select("*, alunos(count)")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      // Filtra os eventos pertencentes a este tipo de demanda
+      const data = await listTurmas();
       const matchType = (t: any) => {
         const c = (t.curso || "").toLowerCase();
         const obs = (t.observacoes || "").toLowerCase();
@@ -213,37 +217,25 @@ export function DemandaEventManager({
         if (tipo === "ensaio") return c.includes("ensaio") || obs.includes("ensaio");
         return false;
       };
-
-      const filtrados = (data as EventoData[]).filter(matchType);
-      return filtrados;
+      return data.filter(matchType) as unknown as EventoData[];
     },
   });
 
-  // 2. QUERY: Detalhes do Evento Selecionado
   const { data: eventoDetalhe, isLoading: isLoadingDetalhe } = useQuery({
     queryKey: ["evento-detalhe", selectedEventoId],
     enabled: !!selectedEventoId,
     queryFn: async () => {
       if (!selectedEventoId) return null;
-      const [eventoRes, contratantesRes, contratosRes] = await Promise.all([
-        supabase.from("turmas").select("*").eq("id", selectedEventoId).maybeSingle(),
-        supabase
-          .from("alunos")
-          .select("*")
-          .eq("turma_id", selectedEventoId)
-          .neq("status", "inativo")
-          .order("nome_completo"),
-        supabase.from("contratos").select("*, parcelas(*)").eq("turma_id", selectedEventoId),
+      const [turmas, alunosApi, contratosApi] = await Promise.all([
+        listTurmas(),
+        listAlunos({ turmaId: selectedEventoId, status: "Ativo" }),
+        listContratos({ turmaId: selectedEventoId }),
       ]);
-
-      if (eventoRes.error) throw eventoRes.error;
-      if (contratantesRes.error) throw contratantesRes.error;
-      if (contratosRes.error) throw contratosRes.error;
-
+      const evento = turmas.find((t) => t.id === selectedEventoId) as unknown as EventoData;
       return {
-        evento: eventoRes.data as EventoData,
-        contratantes: contratantesRes.data as ContratanteItem[],
-        contratos: contratosRes.data || [],
+        evento,
+        contratantes: alunosApi as unknown as ContratanteItem[],
+        contratos: contratosApi,
       };
     },
   });
@@ -275,26 +267,21 @@ export function DemandaEventManager({
         dataEvento,
       };
 
-      const { data, error } = await supabase
-        .from("turmas")
-        .insert({
-          nome,
-          curso:
-            tipo === "casamento"
-              ? "Casamento"
-              : tipo === "festa-aniversario"
-              ? "Festa de Aniversário"
-              : "Ensaio Fotográfico",
-          faculdade: local,
-          cidade: cidade || null,
-          semestre: dataEvento || null,
-          status: "ativa",
-          observacoes: JSON.stringify(observacoesObj),
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await createTurma({
+        nome,
+        curso:
+          tipo === "casamento"
+            ? "Casamento"
+            : tipo === "festa-aniversario"
+            ? "Festa de Aniversário"
+            : "Ensaio Fotográfico",
+        faculdade: local,
+        cidade: cidade || null,
+        semestre: dataEvento || null,
+        tipoEvento: tipo === "casamento" ? "Casamento" : "Outro",
+        status: "Ativa",
+        observacoes: JSON.stringify(observacoesObj),
+      });
       return data;
     },
     onSuccess: (data) => {
@@ -318,18 +305,19 @@ export function DemandaEventManager({
       const dataEvento = String(formData.get("semestre") || "").trim();
       const status = String(formData.get("status") || "ativa");
 
-      const { error } = await supabase
-        .from("turmas")
-        .update({
-          nome,
-          faculdade: local,
-          cidade: cidade || null,
-          semestre: dataEvento || null,
-          status,
-        })
-        .eq("id", editingEvento.id);
-
-      if (error) throw error;
+      const statusMap: Record<string, "Ativa" | "Concluida" | "Inativa"> = {
+        ativa: "Ativa",
+        concluida: "Concluida",
+        cancelada: "Inativa",
+        inativa: "Inativa",
+      };
+      await updateTurma(editingEvento.id, {
+        nome,
+        faculdade: local,
+        cidade: cidade || null,
+        semestre: dataEvento || null,
+        status: statusMap[status.toLowerCase()] ?? "Ativa",
+      });
     },
     onSuccess: () => {
       toast.success("Dados do evento atualizados!");
@@ -340,11 +328,9 @@ export function DemandaEventManager({
     onError: (err: any) => toast.error(err.message || "Erro ao atualizar evento."),
   });
 
-  // MUTATION: Excluir Evento
   const deleteEvento = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("turmas").delete().eq("id", id);
-      if (error) throw error;
+      await apiDeleteTurma(id);
     },
     onSuccess: () => {
       toast.success("Evento excluído com sucesso.");
@@ -360,13 +346,18 @@ export function DemandaEventManager({
   // MUTATION: Salvar Pacotes do Evento
   const salvarPacotes = useMutation({
     mutationFn: async (novosPacotes: PacoteItem[]) => {
-      if (!selectedEventoId) return;
-      const serialized = serializarPacotesTurma(eventoDetalhe?.evento?.observacoes, novosPacotes);
-      const { error } = await supabase
-        .from("turmas")
-        .update({ observacoes: serialized })
-        .eq("id", selectedEventoId);
-      if (error) throw error;
+      if (!selectedEventoId || !eventoDetalhe?.evento) return;
+      const serialized = serializarPacotesTurma(eventoDetalhe.evento.observacoes, novosPacotes);
+      const t: any = eventoDetalhe.evento;
+      await updateTurma(selectedEventoId, {
+        nome: t.nome,
+        faculdade: t.faculdade,
+        cidade: t.cidade,
+        semestre: t.semestre,
+        status: t.status,
+        tipoEvento: t.tipoEvento,
+        observacoes: serialized,
+      });
     },
     onSuccess: () => {
       toast.success("Pacotes do evento atualizados!");
@@ -392,65 +383,34 @@ export function DemandaEventManager({
       const qtdParcelas = parseInt(formNumParcelas) || 1;
       const diaVenc = parseInt(formDiaVencimento) || 10;
 
-      // 1. Cadastra Contratante na tabela 'alunos'
-      const { data: novoAluno, error: errAluno } = await supabase
-        .from("alunos")
-        .insert({
-          turma_id: selectedEventoId,
-          nome_completo: formNome.trim(),
-          cpf: digitsCpf,
-          whatsapp: formWhatsapp.trim() || null,
-          email: formEmail.trim() || cpfParaEmail(digitsCpf),
-          status: "ativo",
-        })
-        .select()
-        .single();
+      const novoAluno = await createAluno({
+        turmaId: selectedEventoId,
+        nomeCompleto: formNome.trim(),
+        cpf: digitsCpf,
+        whatsapp: formWhatsapp.trim() || null,
+        email: formEmail.trim() || cpfParaEmail(digitsCpf),
+      });
 
-      if (errAluno) throw errAluno;
-
-      // 2. Calcula parcelas
       const parcelasCalculadas = calcularParcelasHelper(
         Math.max(0, valTotal - valDesc - valEntrada),
         qtdParcelas,
         diaVenc
       );
 
-      // 3. Cadastra Contrato
       const hoje = new Date().toISOString().slice(0, 10);
-      const { data: novoContrato, error: errContrato } = await supabase
-        .from("contratos")
-        .insert({
-          turma_id: selectedEventoId,
-          aluno_id: novoAluno.id,
-          pacote: pctSelecionado?.nome || "Pacote Personalizado",
-          valor_total: valTotal,
-          valor_entrada: valEntrada,
-          desconto: valDesc,
-          num_parcelas: qtdParcelas,
-          dia_vencimento: diaVenc,
-          forma_pagamento: "pix",
-          autoriza_imagem: true,
-          status: "ativo",
-          data_contrato: hoje,
-        })
-        .select()
-        .single();
-
-      if (errContrato) throw errContrato;
-
-      // 4. Cadastra parcelas
-      if (parcelasCalculadas.length > 0) {
-        const parcelasInsert = parcelasCalculadas.map((p) => ({
-          contrato_id: novoContrato.id,
-          numero: p.numero,
-          valor: p.valor,
-          valor_pago: 0,
-          vencimento: p.vencimento,
-          status: "pendente",
-          forma_pagamento: "pix",
-        }));
-        await supabase.from("parcelas").insert(parcelasInsert);
-      }
+      await createContrato({
+        alunoId: novoAluno.id,
+        pacote: pctSelecionado?.nome || "Pacote Personalizado",
+        valorTotal: valTotal,
+        valorEntrada: valEntrada,
+        desconto: valDesc,
+        numParcelas: qtdParcelas,
+        diaVencimento: diaVenc,
+        formaPagamento: "pix",
+        autorizaImagem: true,
+        dataContrato: hoje,
+        primeiroVencimento: parcelasCalculadas[0]?.vencimento ?? hoje,
+      });
 
       // 5. Salva na store local para acesso imediato
       const allLocal = loadDemandas();
@@ -500,24 +460,16 @@ export function DemandaEventManager({
     onError: (err: any) => toast.error(err.message || "Erro ao cadastrar contratante."),
   });
 
-  // MUTATION: Alternar Status de Parcela (Baixa / Pagamento)
   const toggleParcelaStatus = useMutation({
-    mutationFn: async ({ parcelaId, statusAtual }: { parcelaId: string; statusAtual: string }) => {
-      const novoStatus = statusAtual === "pago" ? "pendente" : "pago";
+    mutationFn: async ({ parcelaId, statusAtual, valor }: { parcelaId: string; statusAtual: string; valor?: number }) => {
+      const pago = String(statusAtual).toLowerCase() === "pago";
       const hoje = new Date().toISOString().slice(0, 10);
-      const updateData: { status: string; data_pagamento: string | null; valor_pago?: number } = {
-        status: novoStatus,
-        data_pagamento: novoStatus === "pago" ? hoje : null,
-      };
-      if (novoStatus !== "pago") {
-        updateData.valor_pago = 0;
+      if (pago) {
+        await desfazerBaixa(parcelaId);
+        return "pendente" as const;
       }
-      const { error } = await supabase
-        .from("parcelas")
-        .update(updateData)
-        .eq("id", parcelaId);
-      if (error) throw error;
-      return novoStatus;
+      await baixarParcela(parcelaId, { valorPago: valor ?? 0, dataPagamento: hoje });
+      return "pago" as const;
     },
     onSuccess: (novoStatus) => {
       toast.success(`Parcela marcada como ${novoStatus === "pago" ? "PAGA" : "PENDENTE"}!`);
@@ -526,11 +478,9 @@ export function DemandaEventManager({
     onError: (err: any) => toast.error(err.message || "Erro ao atualizar parcela."),
   });
 
-  // MUTATION: Excluir Contratante
   const deleteContratante = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("alunos").delete().eq("id", id);
-      if (error) throw error;
+      await apiDeleteAluno(id);
     },
     onSuccess: () => {
       toast.success("Contratante excluído.");
@@ -607,16 +557,16 @@ export function DemandaEventManager({
   const hojeIso = new Date().toISOString().slice(0, 10);
 
   const valorContratado = contratosEvento.reduce(
-    (s: number, c: any) => s + Number(c.valor_total || 0) - Number(c.desconto || 0),
+    (s: number, c: any) => s + Number(c.valorTotal || 0) - Number(c.desconto || 0),
     0
   );
   const totalEntradas = contratosEvento.reduce(
-    (s: number, c: any) => s + Number(c.valor_entrada || 0),
+    (s: number, c: any) => s + Number(c.valorEntrada || 0),
     0
   );
   const totalParcelasPagas = todasParcelas
-    .filter((p: any) => p.status === "pago")
-    .reduce((s: number, p: any) => s + Number(p.valor || p.valor_pago || 0), 0);
+    .filter((p: any) => p.status === "Pago" || p.status === "pago")
+    .reduce((s: number, p: any) => s + Number(p.valorPago || p.valor_pago || 0), 0);
   const totalRecebido = totalEntradas + totalParcelasPagas;
   const saldoAReceber = Math.max(0, valorContratado - totalRecebido);
   const totalEmAtraso = todasParcelas
@@ -1203,7 +1153,7 @@ O contratante possui acesso liberado ao sistema JM Formaturas & Eventos com logi
                       <div className="text-right mr-2 hidden sm:block">
                         <p className="text-xs font-bold text-foreground">
                           {brl(
-                            Number(contrato?.valor_total || 0) - Number(contrato?.desconto || 0)
+                            Number((contrato as any)?.valorTotal || 0) - Number((contrato as any)?.desconto || 0)
                           )}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
@@ -1722,8 +1672,8 @@ O contratante possui acesso liberado ao sistema JM Formaturas & Eventos com logi
                   <p className="text-xs text-muted-foreground uppercase font-bold">Valor Total</p>
                   <p className="font-bold text-primary mt-0.5">
                     {brl(
-                      Number(viewingContratoItem.contrato?.valor_total || 0) -
-                        Number(viewingContratoItem.contrato?.desconto || 0)
+                      Number((viewingContratoItem.contrato as any)?.valorTotal || 0) -
+                        Number((viewingContratoItem.contrato as any)?.desconto || 0)
                     )}
                   </p>
                 </div>

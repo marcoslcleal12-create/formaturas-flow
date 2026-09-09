@@ -19,7 +19,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { listMeusAlunos, type Aluno as ApiAluno } from "@/lib/api/alunos";
 import { AppShell } from "@/components/app/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +51,10 @@ import {
 
 const SELPICS_URL = "https://jm-studio-fotografico.youfocus.com.br/";
 
+type AlunoView = ApiAluno & {
+  turma?: { nome?: string | null; curso?: string | null; faculdade?: string | null; semestre?: string | null } | null;
+};
+
 export const Route = createFileRoute("/_authenticated/painel")({
   head: () => ({
     meta: [
@@ -74,32 +78,13 @@ function PainelAluno() {
 
   const [selectedAlunoId, setSelectedAlunoId] = useState<string | null>(null);
 
-  // 1. Check if user is a Formando in Supabase (by user_id or by CPF)
   const { data: alunos } = useQuery({
-    queryKey: ["meu-cadastro", user?.id, userDigits],
+    queryKey: ["meu-cadastro", user?.id],
     enabled: !!user,
-    queryFn: async () => {
-      // Tenta por user_id se for UUID
-      if (user?.id && user.id.includes("-")) {
-        const { data } = await supabase
-          .from("alunos")
-          .select("*, turmas(nome, curso, faculdade, semestre)")
-          .eq("user_id", user.id);
-        if (data && data.length > 0) return data;
-      }
-      // Tenta por CPF (11 dígitos)
-      if (userDigits && userDigits.length === 11) {
-        const { data } = await supabase
-          .from("alunos")
-          .select("*, turmas(nome, curso, faculdade, semestre)")
-          .eq("cpf", userDigits);
-        if (data && data.length > 0) return data;
-      }
-      return [];
-    },
+    queryFn: () => listMeusAlunos(),
   });
 
-  const aluno = alunos?.find(a => a.id === selectedAlunoId) || alunos?.[0];
+  const aluno: AlunoView | undefined = (alunos as AlunoView[] | undefined)?.find((a) => a.id === selectedAlunoId) || (alunos as AlunoView[] | undefined)?.[0];
 
   useEffect(() => {
     if (alunos && alunos.length > 0 && !selectedAlunoId) {
@@ -107,20 +92,7 @@ function PainelAluno() {
     }
   }, [alunos, selectedAlunoId]);
 
-  // 2. Check if user has a graduation contract in Supabase
-  const { data: contrato } = useQuery({
-    queryKey: ["meu-contrato", aluno?.id],
-    enabled: !!aluno?.id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("contratos")
-        .select("*, parcelas(*)")
-        .eq("aluno_id", aluno!.id)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-  });
+  const contrato = (aluno?.contratos as any[] | undefined)?.[0] ?? null;
 
   // 3. Check if user is a Demanda Client (Casamento, Festa, Ensaio)
   const demandaCliente: DemandaItem | undefined = (() => {
@@ -133,8 +105,8 @@ function PainelAluno() {
 
   // If aluno is found
   const parcelas = [...(contrato?.parcelas ?? [])].sort((a, b) => a.numero - b.numero);
-  const pago = parcelas.reduce((s, p) => s + Number(p.valor_pago), 0) + Number(contrato?.valor_entrada ?? 0);
-  const emAberto = parcelas.filter((p) => p.status !== "pago").reduce((s, p) => s + Number(p.valor), 0);
+  const pago = parcelas.reduce((s, p) => s + Number(p.valorPago), 0) + Number(contrato?.valor_entrada ?? 0);
+  const emAberto = parcelas.filter((p) => p.status !== "Pago").reduce((s, p) => s + Number(p.valor), 0);
 
   // If demanda is found
   const demandaParcelas = demandaCliente?.parcelas ?? [];
@@ -146,10 +118,10 @@ function PainelAluno() {
   const demandaEmAberto = Math.max(0, (demandaCliente?.valorTotal ?? 0) - (demandaCliente?.desconto ?? 0) - demandaPago);
 
   const primeiroNome =
-    (aluno?.nome_completo ?? demandaCliente?.cliente ?? user?.email ?? "").split(" ")[0];
+    (aluno?.nomeCompleto ?? demandaCliente?.cliente ?? user?.email ?? "").split(" ")[0];
 
   const temBoletosAtrasados = !!(
-    (aluno && contrato && parcelas.some((p) => p.status !== "pago" && p.vencimento < hoje)) ||
+    (aluno && contrato && parcelas.some((p: any) => p.status !== "Pago" && p.vencimento < hoje)) ||
     (demandaCliente && demandaParcelas.some((p) => p.status !== "pago" && p.vencimento < hoje))
   );
 
@@ -168,33 +140,33 @@ function PainelAluno() {
     if (aluno && contrato) {
       gerarContratoPdf({
         aluno: {
-          nome_completo: aluno.nome_completo,
-          cpf: aluno.cpf,
+          nome_completo: aluno.nomeCompleto,
+          cpf: aluno.cpf ?? null,
           endereco: aluno.endereco ?? null,
           cidade: aluno.cidade ?? null,
           telefone: aluno.whatsapp ?? null,
           email: aluno.email ?? null,
-          turma_nome: aluno.turmas?.nome ?? null,
+          turma_nome: aluno.turma?.nome ?? null,
         },
         contrato: {
-          pacote: contrato.pacote,
-          valor_total: Number(contrato.valor_total),
+          pacote: contrato.pacote ?? "",
+          valor_total: Number(contrato.valorTotal),
           desconto: Number(contrato.desconto ?? 0),
-          valor_entrada: Number(contrato.valor_entrada ?? 0),
-          dia_vencimento: contrato.dia_vencimento ?? 10,
-          data_contrato: contrato.data_contrato ?? hoje,
-          forma_pagamento: contrato.forma_pagamento ?? "boleto",
-          autoriza_imagem: contrato.autoriza_imagem !== false,
+          valor_entrada: Number(contrato.valorEntrada ?? 0),
+          dia_vencimento: contrato.diaVencimento ?? 10,
+          data_contrato: contrato.dataContrato ?? hoje,
+          forma_pagamento: contrato.formaPagamento ?? "boleto",
+          autoriza_imagem: contrato.autorizaImagem !== false,
         },
-        parcelas: parcelas.map((p) => ({
+        parcelas: parcelas.map((p: any) => ({
           numero: p.numero,
           valor: Number(p.valor),
           vencimento: p.vencimento,
-          status: p.status,
-          data_pagamento: p.data_pagamento,
-          forma_pagamento: p.forma_pagamento,
+          status: String(p.status).toLowerCase(),
+          data_pagamento: p.dataPagamento ?? null,
+          forma_pagamento: p.formaPagamento ?? null,
         })),
-        texto: contrato.texto_contrato ?? CLAUSULAS_PADRAO,
+        texto: contrato.textoContrato ?? CLAUSULAS_PADRAO,
       });
       toast.success("Download do contrato em PDF iniciado!");
     } else if (demandaCliente) {
@@ -416,9 +388,9 @@ function PainelAluno() {
                     <SelectValue placeholder="Selecione a turma" />
                   </SelectTrigger>
                   <SelectContent>
-                    {alunos.map((a) => (
+                    {(alunos as AlunoView[]).map((a) => (
                       <SelectItem key={a.id} value={a.id} className="text-xs">
-                        {a.turmas?.nome} ({a.turmas?.curso})
+                        {a.turma?.nome} ({a.turma?.curso})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -448,7 +420,7 @@ function PainelAluno() {
             </Card>
 
             {/* Card 2: Minhas Fotos Selecionadas */}
-            {aluno.fotos_liberadas && (
+            {aluno.fotosLiberadas && (
               <Card className="shadow-card h-full flex flex-col">
                 <CardHeader className="p-4 pb-3">
                   <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
@@ -458,7 +430,7 @@ function PainelAluno() {
                 </CardHeader>
                 <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1 flex flex-col justify-center">
                 {(() => {
-                  const expirou = aluno.vencimento_fotos_selecionadas && new Date() > new Date(aluno.vencimento_fotos_selecionadas + "T23:59:59");
+                  const expirou = aluno.vencimentoFotosSelecionadas && new Date() > new Date(aluno.vencimentoFotosSelecionadas + "T23:59:59");
                   if (expirou) {
                     return (
                       <div className="text-[11px] text-destructive text-justify leading-relaxed">
@@ -469,9 +441,9 @@ function PainelAluno() {
                     );
                   }
                   return (
-                    <Button asChild className="w-full h-8 text-xs" disabled={!aluno.link_fotos_selecionadas}>
-                      {aluno.link_fotos_selecionadas ? (
-                        <a href={aluno.link_fotos_selecionadas} target="_blank" rel="noopener noreferrer">
+                    <Button asChild className="w-full h-8 text-xs" disabled={!aluno.linkFotosSelecionadas}>
+                      {aluno.linkFotosSelecionadas ? (
+                        <a href={aluno.linkFotosSelecionadas} target="_blank" rel="noopener noreferrer">
                           Acessar Fotos <ExternalLink className="size-3.5 ml-1.5" />
                         </a>
                       ) : (
@@ -485,7 +457,7 @@ function PainelAluno() {
             )}
 
             {/* Card 3: Aprovação de Álbum */}
-            {aluno.album_liberado && (
+            {aluno.albumLiberado && (
               <Card className="shadow-card h-full flex flex-col">
                 <CardHeader className="p-4 pb-3">
                   <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
@@ -494,9 +466,9 @@ function PainelAluno() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1 flex flex-col justify-center">
-                  <Button asChild className="w-full h-8 text-xs" disabled={!aluno.link_aprovacao_album}>
-                    {aluno.link_aprovacao_album ? (
-                      <a href={aluno.link_aprovacao_album} target="_blank" rel="noopener noreferrer">
+                  <Button asChild className="w-full h-8 text-xs" disabled={!aluno.linkAprovacaoAlbum}>
+                    {aluno.linkAprovacaoAlbum ? (
+                      <a href={aluno.linkAprovacaoAlbum} target="_blank" rel="noopener noreferrer">
                         Acessar Álbum <ExternalLink className="size-3.5 ml-1.5" />
                       </a>
                     ) : (
@@ -528,7 +500,7 @@ function PainelAluno() {
               </CardHeader>
               {showDados && (
                 <CardContent className="p-4 pt-0 space-y-1.5 text-xs border-t border-border/40 mt-1 pt-2.5">
-                  <Info label="Nome Completo" value={aluno.nome_completo} />
+                  <Info label="Nome Completo" value={aluno.nomeCompleto} />
                   <Info label="CPF (Login)" value={aluno.cpf} />
                   {aluno.rg && <Info label="RG" value={aluno.rg} />}
                   <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
@@ -561,17 +533,17 @@ function PainelAluno() {
                   {contrato ? (
                     <>
                       <Info label="Pacote" value={contrato.pacote} />
-                      <Info label="Valor Total" value={brl(Number(contrato.valor_total))} />
+                      <Info label="Valor Total" value={brl(Number(contrato.valorTotal))} />
                       {Number(contrato.desconto) > 0 && <Info label="Desconto" value={brl(Number(contrato.desconto))} />}
-                      {Number(contrato.valor_entrada) > 0 && <Info label="Entrada" value={brl(Number(contrato.valor_entrada))} />}
-                      <Info label="Condição" value={`${contrato.num_parcelas}x no ${contrato.forma_pagamento || "boleto"}`} />
-                      <Info label="Vencimento dos Boletos" value={`Todo dia ${contrato.dia_vencimento || 10}`} />
+                      {Number(contrato.valorEntrada) > 0 && <Info label="Entrada" value={brl(Number(contrato.valorEntrada))} />}
+                      <Info label="Condição" value={`${contrato.numParcelas}x no ${contrato.formaPagamento || "boleto"}`} />
+                      <Info label="Vencimento dos Boletos" value={`Todo dia ${contrato.diaVencimento || 10}`} />
                       <Info
                         label="Uso de Imagem"
-                        value={contrato.autoriza_imagem !== false ? "Sim, autorizado para divulgação" : "Não autorizado"}
+                        value={contrato.autorizaImagem !== false ? "Sim, autorizado para divulgação" : "Não autorizado"}
                       />
-                      {aluno?.turmas?.semestre && (
-                        <Info label="Semestre" value={aluno.turmas.semestre} />
+                      {aluno?.turma?.semestre && (
+                        <Info label="Semestre" value={aluno.turma.semestre} />
                       )}
                     </>
                   ) : (
@@ -620,7 +592,7 @@ function PainelAluno() {
                                 <p className="text-xs font-medium text-muted-foreground">PACOTE CONTRATADO</p>
                                 <p className="text-sm font-semibold mt-0.5">{contrato.pacote}</p>
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  Total: {brl(Number(contrato.valor_total))}
+                                  Total: {brl(Number(contrato.valorTotal))}
                                   {Number(contrato.desconto) > 0 && ` (Desconto: ${brl(Number(contrato.desconto))})`}
                                 </p>
                               </div>
@@ -629,7 +601,7 @@ function PainelAluno() {
                                   Termos e Cláusulas Contratuais
                                 </p>
                                 <div className="rounded-xl border border-border bg-card p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text text-foreground/90 shadow-inner">
-                                  {contrato.texto_contrato || CLAUSULAS_PADRAO}
+                                  {contrato.textoContrato || CLAUSULAS_PADRAO}
                                 </div>
                               </div>
                             </div>
@@ -670,13 +642,13 @@ function PainelAluno() {
               {contrato && (
                 <>
                   <div className="grid gap-2 sm:grid-cols-3">
-                    <Info label="Valor total" value={brl(Number(contrato.valor_total))} />
+                    <Info label="Valor total" value={brl(Number(contrato.valorTotal))} />
                     <Info label="Já pago" value={brl(pago)} />
                     <Info label="Em aberto" value={brl(emAberto)} />
                   </div>
                   <div className="space-y-2">
                     {parcelas.map((p) => {
-                      const quitada = p.status === "pago";
+                      const quitada = p.status === "Pago";
                       const atrasada = !quitada && p.vencimento < hoje;
                       return (
                         <div
@@ -703,11 +675,11 @@ function PainelAluno() {
                               <PagamentoDialog
                                 parcelaId={p.id}
                                 numero={p.numero}
-                                valor={Number(p.valor) - Number(p.valor_pago)}
+                                valor={Number(p.valor) - Number(p.valorPago)}
                                 vencimento={p.vencimento}
-                                clienteNome={aluno.nome_completo}
-                                clienteCpf={aluno.cpf}
-                                pacote={contrato.pacote}
+                                clienteNome={aluno.nomeCompleto}
+                                clienteCpf={aluno.cpf ?? ""}
+                                pacote={contrato.pacote ?? ""}
                               />
                             )}
                           </div>
@@ -757,7 +729,7 @@ function PainelAluno() {
   );
 }
 
-function Info({ label, value }: { label: string; value?: string | null }) {
+function Info({ label, value }: { label: string; value?: string | null | undefined }) {
   return (
     <p className="flex justify-between gap-4 border-b border-border/60 py-1.5 last:border-0">
       <span className="text-muted-foreground">{label}</span>

@@ -106,3 +106,7 @@ export async function reativarAluno(id: string): Promise<Aluno> {
 export async function updateAlunoLinks(id: string, input: AlunoLinksInput): Promise<Aluno> {
   return apiFetch<Aluno>({ method: "PUT", path: `/api/v1/alunos/${id}/links`, body: input });
 }
+
+export async function listMeusAlunos(opts?: { signal?: AbortSignal }): Promise<Aluno[]> {
+  return apiFetch<Aluno[]>({ method: "GET", path: "/api/v1/alunos/me", ...(opts?.signal ? { signal: opts.signal } : {}) });
+}
