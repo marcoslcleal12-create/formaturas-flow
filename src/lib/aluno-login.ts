@@ -1,4 +1,8 @@
-export const DOMINIO_FORMANDO = "formando.jmformaturas.app";
+/*  Dominio interno usado como local-part de e-mail do Identity para
+    formandos. NAO precisa existir — o Identity so valida sintaxe. Precisa
+    bater com o valor usado no server function (alunos.functions.ts) e nas
+    contas ja criadas no backend. */
+export const DOMINIO_FORMANDO = "formandos.local";
 
 export function apenasDigitos(valor: string): string {
   return valor.replace(/\D/g, "");
