@@ -1,4 +1,30 @@
-// Armazenamento local e regras de negócio para Colaboradores e Lançamentos
+/*  Camada de compatibilidade sobre a API .NET.
+ *
+ *  A UI (colaboradores.tsx) ainda espera funcoes sincronas — o refactor
+ *  completo pra React Query seria grande. Como MVP, este arquivo mantem
+ *  a API antiga (getColaboradores/getLancamentos/adicionar/deletar/editar)
+ *  mas armazena os dados em memoria + resincroniza da API sob demanda.
+ *
+ *  Fluxo:
+ *  - Boot: `carregarSincrono()` (chamado no useEffect da pagina) puxa da API
+ *    e popula o cache em memoria.
+ *  - Get*: retornam o cache atual sincrono.
+ *  - Adicionar/Editar/Deletar: chamam a API e atualizam o cache.
+ *
+ *  Depois vale migrar tudo pra useQuery — mas isso ja tira o mock antigo do
+ *  ar e passa a operar contra o banco real. */
+
+import {
+  listColaboradores,
+  listLancamentos,
+  createColaborador as apiCreateColaborador,
+  updateColaborador as apiUpdateColaborador,
+  deleteColaborador as apiDeleteColaborador,
+  createLancamento as apiCreateLancamento,
+  deleteLancamento as apiDeleteLancamento,
+  type Colaborador as ApiColaborador,
+  type LancamentoColaborador as ApiLancamento,
+} from "@/lib/api/colaboradores";
 
 export type LancamentoTipo = 'entrada' | 'saida';
 
@@ -22,12 +48,12 @@ export type CategoriaSaida =
 export interface LancamentoColaborador {
   id: string;
   colaboradorId: string;
-  tipo: LancamentoTipo; // 'entrada' (acréscimo) | 'saida' (desconto)
+  tipo: LancamentoTipo;
   categoria: CategoriaEntrada | CategoriaSaida | string;
   descricao: string;
   valor: number;
-  data: string; // YYYY-MM-DD
-  referenciaMesAno?: string | undefined; // YYYY-MM
+  data: string;
+  referenciaMesAno?: string | undefined;
   createdAt: string;
 }
 
@@ -45,283 +71,160 @@ export interface Colaborador {
   createdAt: string;
 }
 
-const STORAGE_KEY_COLABORADORES = 'jm_colaboradores_v1';
-const STORAGE_KEY_LANCAMENTOS = 'jm_colaboradores_lancamentos_v1';
+let cacheColaboradores: Colaborador[] = [];
+let cacheLancamentos: LancamentoColaborador[] = [];
 
-const COLABORADORES_INICIAIS: Colaborador[] = [
-  {
-    id: 'colab-1',
-    nome: 'Carlos Eduardo Mendes',
-    funcao: 'Fotógrafo Principal',
-    salarioBase: 3800,
-    telefone: '(11) 98765-4321',
-    chavePix: 'carlos.mendes@email.com',
-    status: 'ativo',
-    dataAdmissao: '2023-02-15',
-    email: 'carlos.mendes@email.com',
-    observacoes: 'Responsável pelas coberturas de eventos e ensaios externos.',
-    createdAt: new Date('2023-02-15').toISOString(),
-  },
-  {
-    id: 'colab-2',
-    nome: 'Mariana Silva Souza',
-    funcao: 'Editora de Vídeo & Designer',
-    salarioBase: 3200,
-    telefone: '(11) 97654-3210',
-    chavePix: '123.456.789-00',
-    status: 'ativo',
-    dataAdmissao: '2023-05-10',
-    email: 'mariana.design@email.com',
-    observacoes: 'Edição de reels, vídeos de formatura e tratamento de álbuns.',
-    createdAt: new Date('2023-05-10').toISOString(),
-  },
-  {
-    id: 'colab-3',
-    nome: 'Rafael Costa Albuquerque',
-    funcao: 'Cerimonialista & Produção',
-    salarioBase: 2900,
-    telefone: '(11) 96543-2109',
-    chavePix: 'rafael.cerimonial@pix.com',
-    status: 'ativo',
-    dataAdmissao: '2023-08-01',
-    email: 'rafael.producao@email.com',
-    observacoes: 'Coordenação no dia dos bailes e eventos solenes.',
-    createdAt: new Date('2023-08-01').toISOString(),
-  },
-  {
-    id: 'colab-4',
-    nome: 'Beatriz Lima Rocha',
-    funcao: 'Atendimento & Comercial',
-    salarioBase: 2600,
-    telefone: '(11) 95432-1098',
-    chavePix: 'beatriz.comercial@email.com',
-    status: 'ativo',
-    dataAdmissao: '2024-01-10',
-    email: 'beatriz.lima@email.com',
-    observacoes: 'Suporte às comissões de formatura e contratos.',
-    createdAt: new Date('2024-01-10').toISOString(),
-  },
-];
-
-const hojeISO = new Date().toISOString().split('T')[0] ?? '2026-08-21';
-const mesAtual = hojeISO.substring(0, 7);
-
-const LANCAMENTOS_INICIAIS: LancamentoColaborador[] = [
-  {
-    id: 'lanc-1',
-    colaboradorId: 'colab-1',
-    tipo: 'entrada',
-    categoria: 'Freelancer',
-    descricao: 'Cobertura Baile Medicina Turma XXII (Freelance extra)',
-    valor: 450,
-    data: hojeISO,
-    referenciaMesAno: mesAtual,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'lanc-2',
-    colaboradorId: 'colab-1',
-    tipo: 'entrada',
-    categoria: 'Horas Extras',
-    descricao: '6 horas extras tratamento de fotos fim de semana',
-    valor: 180,
-    data: hojeISO,
-    referenciaMesAno: mesAtual,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'lanc-3',
-    colaboradorId: 'colab-1',
-    tipo: 'saida',
-    categoria: 'Vale / Adiantamento',
-    descricao: 'Adiantamento de transporte e alimentação para viagem',
-    valor: 200,
-    data: hojeISO,
-    referenciaMesAno: mesAtual,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'lanc-4',
-    colaboradorId: 'colab-2',
-    tipo: 'entrada',
-    categoria: 'Horas Extras',
-    descricao: 'Edição expressa de vídeo retrospectiva',
-    valor: 250,
-    data: hojeISO,
-    referenciaMesAno: mesAtual,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'lanc-5',
-    colaboradorId: 'colab-2',
-    tipo: 'saida',
-    categoria: 'Vale / Adiantamento',
-    descricao: 'Vale adiantado quinzenal',
-    valor: 300,
-    data: hojeISO,
-    referenciaMesAno: mesAtual,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'lanc-6',
-    colaboradorId: 'colab-3',
-    tipo: 'entrada',
-    categoria: 'Freelancer',
-    descricao: 'Apoio em evento de Aniversário externo',
-    valor: 350,
-    data: hojeISO,
-    referenciaMesAno: mesAtual,
-    createdAt: new Date().toISOString(),
-  },
-];
-
-export function getColaboradores(): Colaborador[] {
-  if (typeof window === 'undefined') return COLABORADORES_INICIAIS;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_COLABORADORES);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEY_COLABORADORES, JSON.stringify(COLABORADORES_INICIAIS));
-      return COLABORADORES_INICIAIS;
-    }
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error('Erro ao ler colaboradores:', err);
-    return COLABORADORES_INICIAIS;
-  }
+function adaptarColab(c: ApiColaborador): Colaborador {
+  return {
+    id: c.id,
+    nome: c.nome,
+    funcao: c.funcao,
+    salarioBase: Number(c.salarioBase),
+    telefone: c.telefone ?? undefined,
+    chavePix: c.chavePix ?? undefined,
+    status: c.status === "Ativo" ? "ativo" : "inativo",
+    dataAdmissao: c.dataAdmissao ?? undefined,
+    email: c.email ?? undefined,
+    observacoes: c.observacoes ?? undefined,
+    createdAt: c.criadoEm,
+  };
 }
 
-export function saveColaboradores(colaboradores: Colaborador[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY_COLABORADORES, JSON.stringify(colaboradores));
-  } catch (err) {
-    console.error('Erro ao salvar colaboradores:', err);
-  }
+function adaptarLanc(l: ApiLancamento): LancamentoColaborador {
+  return {
+    id: l.id,
+    colaboradorId: l.colaboradorId,
+    tipo: l.tipo === "Entrada" ? "entrada" : "saida",
+    categoria: l.categoria,
+    descricao: l.descricao,
+    valor: Number(l.valor),
+    data: l.data,
+    referenciaMesAno: l.referenciaMesAno ?? undefined,
+    createdAt: l.criadoEm,
+  };
+}
+
+export async function sincronizarColaboradores(): Promise<void> {
+  const [colabs, lancs] = await Promise.all([
+    listColaboradores(),
+    listLancamentos(),
+  ]);
+  cacheColaboradores = colabs.map(adaptarColab);
+  cacheLancamentos = lancs.map(adaptarLanc);
+}
+
+export function getColaboradores(): Colaborador[] {
+  return cacheColaboradores;
 }
 
 export function getLancamentos(): LancamentoColaborador[] {
-  if (typeof window === 'undefined') return LANCAMENTOS_INICIAIS;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_LANCAMENTOS);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEY_LANCAMENTOS, JSON.stringify(LANCAMENTOS_INICIAIS));
-      return LANCAMENTOS_INICIAIS;
-    }
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error('Erro ao ler lançamentos:', err);
-    return LANCAMENTOS_INICIAIS;
-  }
+  return cacheLancamentos;
 }
 
-export function saveLancamentos(lancamentos: LancamentoColaborador[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY_LANCAMENTOS, JSON.stringify(lancamentos));
-  } catch (err) {
-    console.error('Erro ao salvar lançamentos:', err);
-  }
-}
-
-export function addColaborador(dados: Omit<Colaborador, 'id' | 'createdAt'>): Colaborador {
-  const list = getColaboradores();
-  const novo: Colaborador = {
-    ...dados,
-    id: 'colab-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-    createdAt: new Date().toISOString(),
-  };
-  list.unshift(novo);
-  saveColaboradores(list);
-  return novo;
-}
-
-export function updateColaborador(id: string, atualizacao: Partial<Colaborador>): Colaborador | null {
-  const list = getColaboradores();
-  const index = list.findIndex((c) => c.id === id);
-  if (index === -1) return null;
-
-  const atual = list[index];
-  if (!atual) return null;
-
-  const atualizado: Colaborador = {
-    id: atual.id,
-    nome: atualizacao.nome ?? atual.nome,
-    funcao: atualizacao.funcao ?? atual.funcao,
-    salarioBase: atualizacao.salarioBase ?? atual.salarioBase,
-    telefone: atualizacao.telefone !== undefined ? atualizacao.telefone : atual.telefone,
-    chavePix: atualizacao.chavePix !== undefined ? atualizacao.chavePix : atual.chavePix,
-    status: atualizacao.status ?? atual.status,
-    dataAdmissao: atualizacao.dataAdmissao !== undefined ? atualizacao.dataAdmissao : atual.dataAdmissao,
-    email: atualizacao.email !== undefined ? atualizacao.email : atual.email,
-    observacoes: atualizacao.observacoes !== undefined ? atualizacao.observacoes : atual.observacoes,
-    createdAt: atual.createdAt,
-  };
-
-  list[index] = atualizado;
-  saveColaboradores(list);
-  return atualizado;
-}
-
-export function deleteColaborador(id: string): void {
-  const list = getColaboradores().filter((c) => c.id !== id);
-  saveColaboradores(list);
-
-  // Também limpa lançamentos deste colaborador
-  const lancamentos = getLancamentos().filter((l) => l.colaboradorId !== id);
-  saveLancamentos(lancamentos);
-}
-
-export function addLancamento(
-  dados: Omit<LancamentoColaborador, 'id' | 'createdAt' | 'referenciaMesAno'>
-): LancamentoColaborador {
-  const list = getLancamentos();
-  const refMes = dados.data ? dados.data.substring(0, 7) : new Date().toISOString().substring(0, 7);
-  const novo: LancamentoColaborador = {
-    ...dados,
-    id: 'lanc-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-    referenciaMesAno: refMes,
-    createdAt: new Date().toISOString(),
-  };
-  list.unshift(novo);
-  saveLancamentos(list);
-  return novo;
-}
-
-export function deleteLancamento(id: string): void {
-  const list = getLancamentos().filter((l) => l.id !== id);
-  saveLancamentos(list);
-}
-
-export function calcularTotaisColaborador(
-  colaborador: Colaborador,
-  lancamentos: LancamentoColaborador[],
-  filtroMesAno?: string
-) {
-  const lancamentosFiltrados = lancamentos.filter((l) => {
-    if (l.colaboradorId !== colaborador.id) return false;
-    if (filtroMesAno && filtroMesAno !== 'todos') {
-      const dataRef = l.referenciaMesAno || l.data.substring(0, 7);
-      return dataRef === filtroMesAno;
-    }
-    return true;
+export async function adicionarColaborador(c: Omit<Colaborador, 'id' | 'createdAt'>): Promise<Colaborador> {
+  const criado = await apiCreateColaborador({
+    nome: c.nome,
+    funcao: c.funcao,
+    salarioBase: c.salarioBase,
+    telefone: c.telefone,
+    chavePix: c.chavePix,
+    email: c.email,
+    dataAdmissao: c.dataAdmissao,
+    observacoes: c.observacoes,
   });
+  const adaptado = adaptarColab(criado);
+  cacheColaboradores = [...cacheColaboradores, adaptado];
+  return adaptado;
+}
 
-  const totalEntradas = lancamentosFiltrados
-    .filter((l) => l.tipo === 'entrada')
-    .reduce((acc, curr) => acc + (Number(curr.valor) || 0), 0);
+export async function editarColaborador(id: string, c: Partial<Omit<Colaborador, 'id' | 'createdAt'>>): Promise<Colaborador> {
+  const existente = cacheColaboradores.find((x) => x.id === id);
+  if (!existente) throw new Error("Colaborador não encontrado no cache.");
+  const merged = { ...existente, ...c };
+  const atualizado = await apiUpdateColaborador(id, {
+    nome: merged.nome,
+    funcao: merged.funcao,
+    salarioBase: merged.salarioBase,
+    telefone: merged.telefone,
+    chavePix: merged.chavePix,
+    email: merged.email,
+    dataAdmissao: merged.dataAdmissao,
+    observacoes: merged.observacoes,
+    status: (merged.status === "ativo" ? "Ativo" : "Inativo") as "Ativo" | "Inativo",
+  });
+  const adaptado = adaptarColab(atualizado);
+  cacheColaboradores = cacheColaboradores.map((x) => (x.id === id ? adaptado : x));
+  return adaptado;
+}
 
-  const totalSaidas = lancamentosFiltrados
-    .filter((l) => l.tipo === 'saida')
-    .reduce((acc, curr) => acc + (Number(curr.valor) || 0), 0);
+export async function deletarColaborador(id: string): Promise<void> {
+  await apiDeleteColaborador(id);
+  cacheColaboradores = cacheColaboradores.filter((c) => c.id !== id);
+  cacheLancamentos = cacheLancamentos.filter((l) => l.colaboradorId !== id);
+}
 
-  const salarioBase = Number(colaborador.salarioBase) || 0;
-  const valorFinal = Math.max(0, salarioBase + totalEntradas - totalSaidas);
+export async function adicionarLancamento(l: Omit<LancamentoColaborador, 'id' | 'createdAt'>): Promise<LancamentoColaborador> {
+  const criado = await apiCreateLancamento({
+    colaboradorId: l.colaboradorId,
+    tipo: l.tipo === "entrada" ? "Entrada" : "Saida",
+    categoria: l.categoria,
+    descricao: l.descricao,
+    valor: l.valor,
+    data: l.data,
+    referenciaMesAno: l.referenciaMesAno,
+  });
+  const adaptado = adaptarLanc(criado);
+  cacheLancamentos = [adaptado, ...cacheLancamentos];
+  return adaptado;
+}
+
+export async function deletarLancamento(id: string): Promise<void> {
+  await apiDeleteLancamento(id);
+  cacheLancamentos = cacheLancamentos.filter((l) => l.id !== id);
+}
+
+/*  Aliases usados pela pagina de colaboradores (nomes historicos ficaram
+    com sufixos add/update/delete em ingles). */
+export const addColaborador     = adicionarColaborador;
+export const updateColaborador  = editarColaborador;
+export const deleteColaborador  = deletarColaborador;
+export const addLancamento      = adicionarLancamento;
+export const deleteLancamento   = deletarLancamento;
+
+export type TotaisColaborador = {
+  colaborador: Colaborador;
+  salarioBase: number;
+  totalEntradas: number;
+  totalSaidas: number;
+  valorFinal: number;
+  lancamentos: LancamentoColaborador[];
+};
+
+/*  Consolida os lancamentos do mes (`YYYY-MM`) e devolve o liquido do
+    colaborador. Quando `mesAno` for "todos", agrega tudo. */
+export function calcularTotaisColaborador(
+  colab: Colaborador,
+  lancamentos: LancamentoColaborador[],
+  mesAno: string,
+): TotaisColaborador {
+  const doColab = lancamentos.filter((l) => l.colaboradorId === colab.id);
+  const filtrados = mesAno === "todos"
+    ? doColab
+    : doColab.filter((l) => (l.referenciaMesAno ?? l.data.substring(0, 7)) === mesAno);
+
+  const totalEntradas = filtrados
+    .filter((l) => l.tipo === "entrada")
+    .reduce((s, l) => s + Number(l.valor), 0);
+  const totalSaidas = filtrados
+    .filter((l) => l.tipo === "saida")
+    .reduce((s, l) => s + Number(l.valor), 0);
 
   return {
-    salarioBase,
+    colaborador: colab,
+    salarioBase: Number(colab.salarioBase),
     totalEntradas,
     totalSaidas,
-    valorFinal,
-    lancamentos: lancamentosFiltrados,
+    valorFinal: Number(colab.salarioBase) + totalEntradas - totalSaidas,
+    lancamentos: filtrados,
   };
 }

@@ -65,6 +65,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  sincronizarColaboradores,
   getColaboradores,
   getLancamentos,
   addColaborador,
@@ -78,6 +79,7 @@ import {
   type CategoriaEntrada,
   type CategoriaSaida,
 } from "@/lib/colaboradores-store";
+import { mensagemErro } from "@/lib/api/errors";
 
 export const Route = createFileRoute("/_authenticated/colaboradores")({
   head: () => ({
@@ -175,14 +177,14 @@ function ColaboradoresPage() {
   const [colabToDelete, setColabToDelete] = useState<Colaborador | null>(null);
   const [lancamentoToDelete, setLancamentoToDelete] = useState<LancamentoColaborador | null>(null);
 
-  // Carregar dados
-  const recarregarDados = () => {
+  const recarregarDados = async () => {
+    await sincronizarColaboradores();
     setColaboradores(getColaboradores());
     setLancamentos(getLancamentos());
   };
 
   useEffect(() => {
-    recarregarDados();
+    void recarregarDados();
   }, []);
 
   // Determina mês de referência atual (YYYY-MM)
@@ -321,7 +323,7 @@ function ColaboradoresPage() {
     setIsColabDialogOpen(true);
   };
 
-  const handleSaveColaborador = (e: React.FormEvent) => {
+  const handleSaveColaborador = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!colabFormData.nome.trim()) {
       toast.error("Nome do colaborador é obrigatório");
@@ -333,47 +335,55 @@ function ColaboradoresPage() {
     }
     const salarioNum = parseFloat(colabFormData.salarioBase.replace(",", ".")) || 0;
 
-    if (editingColab) {
-      updateColaborador(editingColab.id, {
-        nome: colabFormData.nome.trim(),
-        funcao: colabFormData.funcao.trim(),
-        salarioBase: salarioNum,
-        telefone: colabFormData.telefone.trim() || undefined,
-        chavePix: colabFormData.chavePix.trim() || undefined,
-        email: colabFormData.email.trim() || undefined,
-        dataAdmissao: colabFormData.dataAdmissao || undefined,
-        observacoes: colabFormData.observacoes.trim() || undefined,
-        status: colabFormData.status,
-      });
-      toast.success(`Colaborador "${colabFormData.nome}" atualizado com sucesso!`);
-    } else {
-      addColaborador({
-        nome: colabFormData.nome.trim(),
-        funcao: colabFormData.funcao.trim(),
-        salarioBase: salarioNum,
-        telefone: colabFormData.telefone.trim() || undefined,
-        chavePix: colabFormData.chavePix.trim() || undefined,
-        email: colabFormData.email.trim() || undefined,
-        dataAdmissao: colabFormData.dataAdmissao || undefined,
-        observacoes: colabFormData.observacoes.trim() || undefined,
-        status: colabFormData.status,
-      });
-      toast.success(`Colaborador "${colabFormData.nome}" cadastrado com sucesso!`);
-    }
+    try {
+      if (editingColab) {
+        await updateColaborador(editingColab.id, {
+          nome: colabFormData.nome.trim(),
+          funcao: colabFormData.funcao.trim(),
+          salarioBase: salarioNum,
+          telefone: colabFormData.telefone.trim() || undefined,
+          chavePix: colabFormData.chavePix.trim() || undefined,
+          email: colabFormData.email.trim() || undefined,
+          dataAdmissao: colabFormData.dataAdmissao || undefined,
+          observacoes: colabFormData.observacoes.trim() || undefined,
+          status: colabFormData.status,
+        });
+        toast.success(`Colaborador "${colabFormData.nome}" atualizado com sucesso!`);
+      } else {
+        await addColaborador({
+          nome: colabFormData.nome.trim(),
+          funcao: colabFormData.funcao.trim(),
+          salarioBase: salarioNum,
+          telefone: colabFormData.telefone.trim() || undefined,
+          chavePix: colabFormData.chavePix.trim() || undefined,
+          email: colabFormData.email.trim() || undefined,
+          dataAdmissao: colabFormData.dataAdmissao || undefined,
+          observacoes: colabFormData.observacoes.trim() || undefined,
+          status: colabFormData.status,
+        });
+        toast.success(`Colaborador "${colabFormData.nome}" cadastrado com sucesso!`);
+      }
 
-    recarregarDados();
-    setIsColabDialogOpen(false);
+      await recarregarDados();
+      setIsColabDialogOpen(false);
+    } catch (err) {
+      toast.error(mensagemErro(err));
+    }
   };
 
-  const handleConfirmDeleteColaborador = () => {
+  const handleConfirmDeleteColaborador = async () => {
     if (!colabToDelete) return;
-    deleteColaborador(colabToDelete.id);
-    toast.success(`Colaborador "${colabToDelete.nome}" removido.`);
-    setColabToDelete(null);
-    if (selectedColabForDetails?.id === colabToDelete.id) {
-      setIsDetailsOpen(false);
+    try {
+      await deleteColaborador(colabToDelete.id);
+      toast.success(`Colaborador "${colabToDelete.nome}" removido.`);
+      setColabToDelete(null);
+      if (selectedColabForDetails?.id === colabToDelete.id) {
+        setIsDetailsOpen(false);
+      }
+      await recarregarDados();
+    } catch (err) {
+      toast.error(mensagemErro(err));
     }
-    recarregarDados();
   };
 
   // Handlers para Lançamentos
@@ -391,7 +401,7 @@ function ColaboradoresPage() {
     setIsLancamentoDialogOpen(true);
   };
 
-  const handleSaveLancamento = (e: React.FormEvent) => {
+  const handleSaveLancamento = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lancamentoFormData.colaboradorId) {
       toast.error("Selecione um colaborador");
@@ -407,29 +417,37 @@ function ColaboradoresPage() {
       return;
     }
 
-    addLancamento({
-      colaboradorId: lancamentoFormData.colaboradorId,
-      tipo: lancamentoFormData.tipo,
-      categoria: lancamentoFormData.categoria,
-      descricao: lancamentoFormData.descricao.trim(),
-      valor: valorNum,
-      data: lancamentoFormData.data || new Date().toISOString().split("T")[0] || "2026-08-21",
-    });
+    try {
+      await addLancamento({
+        colaboradorId: lancamentoFormData.colaboradorId,
+        tipo: lancamentoFormData.tipo,
+        categoria: lancamentoFormData.categoria,
+        descricao: lancamentoFormData.descricao.trim(),
+        valor: valorNum,
+        data: lancamentoFormData.data || new Date().toISOString().split("T")[0] || "2026-08-21",
+      });
 
-    const colab = colaboradores.find((c) => c.id === lancamentoFormData.colaboradorId);
-    const tipoTxt = lancamentoFormData.tipo === "entrada" ? "Acréscimo (+)" : "Vale/Desconto (-)";
-    toast.success(`Lançamento de ${tipoTxt} registrado para ${colab?.nome || "colaborador"}!`);
+      const colab = colaboradores.find((c) => c.id === lancamentoFormData.colaboradorId);
+      const tipoTxt = lancamentoFormData.tipo === "entrada" ? "Acréscimo (+)" : "Vale/Desconto (-)";
+      toast.success(`Lançamento de ${tipoTxt} registrado para ${colab?.nome || "colaborador"}!`);
 
-    recarregarDados();
-    setIsLancamentoDialogOpen(false);
+      await recarregarDados();
+      setIsLancamentoDialogOpen(false);
+    } catch (err) {
+      toast.error(mensagemErro(err));
+    }
   };
 
-  const handleConfirmDeleteLancamento = () => {
+  const handleConfirmDeleteLancamento = async () => {
     if (!lancamentoToDelete) return;
-    deleteLancamento(lancamentoToDelete.id);
-    toast.success("Lançamento removido com sucesso!");
-    setLancamentoToDelete(null);
-    recarregarDados();
+    try {
+      await deleteLancamento(lancamentoToDelete.id);
+      toast.success("Lançamento removido com sucesso!");
+      setLancamentoToDelete(null);
+      await recarregarDados();
+    } catch (err) {
+      toast.error(mensagemErro(err));
+    }
   };
 
   const handleOpenExtrato = (colab: Colaborador) => {
