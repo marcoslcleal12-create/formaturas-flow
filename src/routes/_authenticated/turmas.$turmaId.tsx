@@ -27,6 +27,7 @@ import {
 } from "@/lib/api/turmas";
 import {
   listAlunos,
+  createAluno as apiCreateAluno,
   updateAluno as apiUpdateAluno,
   deleteAluno as apiDeleteAluno,
   type AlunoListItem,
@@ -134,6 +135,7 @@ function TurmaDetalhe() {
   const [openGerenciarPacotes, setOpenGerenciarPacotes] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  const [openNovoAluno, setOpenNovoAluno] = useState(false);
   const [editingAluno, setEditingAluno] = useState<AlunoListItem | null>(null);
   const [deletingAluno, setDeletingAluno] = useState<AlunoListItem | null>(null);
 
@@ -287,6 +289,31 @@ function TurmaDetalhe() {
       void navigate({ to: "/turmas" });
     },
     onError: (error) => toast.error(`Erro ao excluir turma: ${mensagemErro(error)}`),
+  });
+
+  const criarAluno = useMutation({
+    mutationFn: async (form: FormData) => {
+      const parsed = alunoSchema.parse({
+        nome_completo: form.get("nome_completo"),
+        cpf: form.get("cpf") || undefined,
+        whatsapp: form.get("whatsapp") || undefined,
+        email: form.get("email") || undefined,
+      });
+      return apiCreateAluno({
+        turmaId,
+        nomeCompleto: parsed.nome_completo,
+        cpf: parsed.cpf ? parsed.cpf.replace(/\D/g, "") : undefined,
+        whatsapp: parsed.whatsapp ?? undefined,
+        email: parsed.email || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Formando adicionado com sucesso!");
+      setOpenNovoAluno(false);
+      void queryClient.invalidateQueries({ queryKey: ["turma", turmaId] });
+    },
+    onError: (error) =>
+      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : mensagemErro(error)),
   });
 
   const updateAluno = useMutation({
@@ -557,12 +584,19 @@ function TurmaDetalhe() {
         <CardHeader>
           <CardTitle className="text-base flex items-center justify-between">
             <span>Formandos ({alunos.length})</span>
+            <Button size="sm" onClick={() => setOpenNovoAluno(true)} className="gap-1.5">
+              <Plus className="size-4" /> Novo Formando
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {alunos.length === 0 && (
-            <div className="py-8 text-center text-muted-foreground text-sm">
-              Nenhum formando cadastrado nesta turma ainda.
+            <div className="py-8 text-center text-muted-foreground text-sm space-y-2">
+              <p>Nenhum formando cadastrado nesta turma ainda.</p>
+              <p className="text-xs">
+                Use <strong>Novo Formando</strong> para cadastrar manualmente,
+                ou compartilhe o <strong>Link de Adesão</strong> para o próprio formando se cadastrar.
+              </p>
             </div>
           )}
           {alunos.map((aluno) => (
@@ -726,6 +760,58 @@ function TurmaDetalhe() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={openNovoAluno} onOpenChange={setOpenNovoAluno}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo Formando</DialogTitle>
+          </DialogHeader>
+          <form
+            id="form-novo-aluno"
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              criarAluno.mutate(new FormData(e.currentTarget));
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="novo_nome_completo">Nome completo *</Label>
+              <Input
+                id="novo_nome_completo"
+                name="nome_completo"
+                required
+                maxLength={120}
+                autoFocus
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="novo_cpf">CPF</Label>
+                <Input id="novo_cpf" name="cpf" placeholder="000.000.000-00" maxLength={20} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="novo_whatsapp">WhatsApp</Label>
+                <Input id="novo_whatsapp" name="whatsapp" placeholder="(11) 99999-9999" maxLength={20} />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="novo_email">E-mail</Label>
+                <Input id="novo_email" name="email" type="email" placeholder="aluno@email.com" maxLength={255} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Depois de criar, entre no formando pra cadastrar o contrato e liberar o acesso (login por CPF).
+            </p>
+          </form>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpenNovoAluno(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="form-novo-aluno" disabled={criarAluno.isPending}>
+              {criarAluno.isPending ? "Adicionando..." : "Adicionar Formando"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!editingAluno} onOpenChange={(v) => !v && setEditingAluno(null)}>
         {editingAluno && (
