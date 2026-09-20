@@ -320,7 +320,10 @@ function PainelAluno() {
                             vencimento={p.vencimento}
                             clienteNome={demandaCliente.cliente}
                             clienteCpf={demandaCliente.cpf}
+                            clienteEmail={demandaCliente.email ?? null}
+                            clienteTelefone={demandaCliente.whatsapp ?? null}
                             pacote={demandaCliente.pacote}
+                            tipoProjeto={demandaCliente.tipo === "casamento" ? "Casamento" : "Formatura"}
                           />
                         )}
                       </div>
@@ -647,7 +650,10 @@ function PainelAluno() {
                                 vencimento={p.vencimento}
                                 clienteNome={aluno.nomeCompleto}
                                 clienteCpf={aluno.cpf ?? ""}
+                                clienteEmail={aluno.email ?? null}
+                                clienteTelefone={aluno.whatsapp ?? aluno.telefone ?? null}
                                 pacote={contrato.pacote ?? ""}
+                                tipoProjeto="Formatura"
                               />
                             )}
                           </div>
