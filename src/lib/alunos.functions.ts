@@ -33,10 +33,24 @@ export const criarAcessoFormando = createServerFn({ method: "POST" })
     if (aluno.userId) throw new Error("Este formando ja possui acesso.");
 
     const email = `${cpf}@formandos.local`;
+    try {
+      await apiFetch({
+        method: "POST",
+        path: "/auth/register",
+        body: { email, password: cpf, nomeCompleto: aluno.nomeCompleto },
+      });
+    } catch (err) {
+      /*  Usuario ja existe? Segue pro passo de vinculo — o /auth/register
+          responde 400 com codigo DuplicateUserName quando o email colide,
+          mas o vincular-user resolve o caso re-conectando ao aluno atual. */
+      const msg = String((err as Error).message ?? "");
+      if (!msg.includes("400") && !msg.includes("Duplicate")) throw err;
+    }
+
     await apiFetch({
       method: "POST",
-      path: "/auth/register",
-      body: { email, password: cpf, nomeCompleto: aluno.nomeCompleto },
+      path: `/api/v1/alunos/${data.alunoId}/vincular-user`,
+      body: { email },
     });
 
     return { login: cpf, senhaTemporaria: cpf };
@@ -131,6 +145,17 @@ export const realizarAdesaoPublica = createServerFn({ method: "POST" })
       });
     } catch {
       /* usuario ja existente e ok — login continua sendo o CPF */
+    }
+
+    try {
+      await apiFetch({
+        method: "POST",
+        path: `/api/v1/alunos/${resp.alunoId}/vincular-user`,
+        body: { email },
+      });
+    } catch {
+      /* vinculo pode falhar se ainda faltar service token na adesao publica;
+         o aluno consegue logar mesmo assim pelo fallback do CPF@formandos.local */
     }
 
     return {

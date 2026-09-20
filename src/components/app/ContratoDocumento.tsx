@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileDown, Save, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { updateContrato } from "@/lib/api/contratos";
+import { mensagemErro } from "@/lib/api/errors";
 import {
   CLAUSULAS_PADRAO,
   FORMAS_PAGAMENTO,
@@ -84,7 +85,7 @@ export function ContratoDocumento({
       toast.success("Contrato salvo");
       void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
     },
-    onError: (error) => toast.error((error as Error).message),
+    onError: (error) => toast.error(mensagemErro(error)),
   });
 
   return (

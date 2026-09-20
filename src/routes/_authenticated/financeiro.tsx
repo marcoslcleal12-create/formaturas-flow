@@ -30,6 +30,7 @@ import {
   baixarDespesa as apiBaixarDespesa,
   desfazerDespesa,
 } from "@/lib/api/despesas";
+import { mensagemErro } from "@/lib/api/errors";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -273,7 +274,7 @@ function FinanceiroPage() {
       setOpenNovaDespesa(false);
       void queryClient.invalidateQueries({ queryKey: ["despesas"] });
     },
-    onError: (error) => toast.error((error as Error).message),
+    onError: (error) => toast.error(mensagemErro(error)),
   });
 
   const baixarDespesa = useMutation({
@@ -285,7 +286,7 @@ function FinanceiroPage() {
       }
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["despesas"] }),
-    onError: (error) => toast.error((error as Error).message),
+    onError: (error) => toast.error(mensagemErro(error)),
   });
 
   const handleToggleParcelaStatus = async (item: ParcelaUnificada) => {

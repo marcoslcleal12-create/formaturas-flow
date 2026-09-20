@@ -12,6 +12,7 @@ import {
   type TurmaListItem,
   type StatusTurma,
 } from "@/lib/api/turmas";
+import { mensagemErro } from "@/lib/api/errors";
 import { AppShell } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,7 +103,7 @@ function TurmasPage() {
       void queryClient.invalidateQueries({ queryKey: ["turmas"] });
     },
     onError: (error) =>
-      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
+      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : mensagemErro(error)),
   });
 
   const updateTurma = useMutation({
@@ -132,7 +133,7 @@ function TurmasPage() {
       void queryClient.invalidateQueries({ queryKey: ["turmas"] });
     },
     onError: (error) =>
-      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
+      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : mensagemErro(error)),
   });
 
   const deleteTurma = useMutation({
@@ -142,7 +143,7 @@ function TurmasPage() {
       setDeletingTurma(null);
       void queryClient.invalidateQueries({ queryKey: ["turmas"] });
     },
-    onError: (error) => toast.error(`Erro ao excluir turma: ${(error as Error).message}`),
+    onError: (error) => toast.error(`Erro ao excluir turma: ${mensagemErro(error)}`),
   });
 
   const isDemanda = (t: TurmaListItem) => {

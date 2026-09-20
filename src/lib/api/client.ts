@@ -56,7 +56,26 @@ export function getAuthToken(override?: string): string | undefined {
   return readEnv("FORMATURAS_API_TOKEN");
 }
 
+/*  Contrato de erro do backend (ver DomainExceptionHandler no .NET):
+    ProblemDetails RFC 9457 + extensao `codigo` estavel + `detalhes` opcional.
+    O codigo eh o SNAKE_CASE_MAIUSCULO que a UI faz switch para saber que
+    fluxo abrir. A `message` do Error mantem compatibilidade com callers
+    antigos que ainda usam (err as Error).message. */
+export type ProblemDetails = {
+  type?: string;
+  title?: string;
+  status?: number;
+  detail?: string;
+  traceId?: string;
+  codigo?: string;
+  [k: string]: unknown;
+};
+
 export class ApiError extends Error {
+  public readonly codigo: string;
+  public readonly detalhes: Record<string, unknown>;
+  public readonly problem: ProblemDetails | null;
+
   constructor(
     public readonly status: number,
     public readonly body: unknown,
@@ -64,6 +83,23 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = "ApiError";
+
+    if (body && typeof body === "object") {
+      const pd = body as ProblemDetails;
+      this.problem = pd;
+      this.codigo = typeof pd.codigo === "string" ? pd.codigo : `HTTP_${status}`;
+      const { type: _t, title: _ti, status: _s, detail: _d, traceId: _tr, codigo: _c, ...rest } = pd;
+      void _t; void _ti; void _s; void _d; void _tr; void _c;
+      this.detalhes = rest;
+    } else {
+      this.problem = null;
+      this.codigo = `HTTP_${status}`;
+      this.detalhes = {};
+    }
+  }
+
+  get detail(): string | undefined {
+    return this.problem?.detail;
   }
 }
 

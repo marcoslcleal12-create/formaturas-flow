@@ -50,6 +50,7 @@ import {
   deleteDespesa,
   type Despesa,
 } from "@/lib/api/despesas";
+import { mensagemErro } from "@/lib/api/errors";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -233,7 +234,7 @@ function FluxoCaixaPage() {
       void queryClient.invalidateQueries({ queryKey: ["despesas"] });
     },
     onError: (err) => {
-      toast.error((err as Error).message || "Erro ao registrar saída.");
+      toast.error(mensagemErro(err) || "Erro ao registrar saída.");
     },
   });
 
@@ -248,7 +249,7 @@ function FluxoCaixaPage() {
       void queryClient.invalidateQueries({ queryKey: ["despesas"] });
     },
     onError: (err) => {
-      toast.error("Erro ao excluir saída: " + (err as Error).message);
+      toast.error("Erro ao excluir saída: " + mensagemErro(err));
     },
   });
 

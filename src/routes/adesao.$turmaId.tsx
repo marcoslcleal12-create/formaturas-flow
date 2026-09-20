@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { z } from "zod";
 import { brl } from "@/components/app/AppShell";
+import { mensagemErro } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -250,7 +251,7 @@ Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às
       void navigate({ to: "/painel" });
     },
     onError: (err) => {
-      toast.error((err as Error).message || "Erro ao concluir adesão.");
+      toast.error(mensagemErro(err, "Erro ao concluir adesão."));
     },
   });
 

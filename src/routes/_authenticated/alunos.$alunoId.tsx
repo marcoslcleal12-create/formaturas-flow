@@ -45,6 +45,7 @@ import {
   type Parcela,
 } from "@/lib/api/contratos";
 import { baixarParcela, desfazerBaixa } from "@/lib/api/parcelas";
+import { mensagemErro } from "@/lib/api/errors";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { CLAUSULAS_PADRAO, FORMAS_PAGAMENTO, gerarContratoPdf } from "@/lib/contrato-modelo";
 import { Button } from "@/components/ui/button";
@@ -232,7 +233,7 @@ function AlunoDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["turma"] });
     },
     onError: (error) =>
-      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
+      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : mensagemErro(error)),
   });
 
   const updateLinksAluno = useMutation({
@@ -250,7 +251,7 @@ function AlunoDetalhe() {
       toast.success("Dados de seleção atualizados com sucesso!");
       void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
     },
-    onError: (error) => toast.error(`Erro ao salvar: ${(error as Error).message}`),
+    onError: (error) => toast.error(`Erro ao salvar: ${mensagemErro(error)}`),
   });
 
   const deleteAluno = useMutation({
@@ -268,7 +269,7 @@ function AlunoDetalhe() {
         void navigate({ to: "/turmas" });
       }
     },
-    onError: (error) => toast.error(`Erro ao excluir formando: ${(error as Error).message}`),
+    onError: (error) => toast.error(`Erro ao excluir formando: ${mensagemErro(error)}`),
   });
 
   const inativarAluno = useMutation({
@@ -285,7 +286,7 @@ function AlunoDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["financeiro-data"] });
       void queryClient.invalidateQueries({ queryKey: ["fluxo-caixa-data"] });
     },
-    onError: (error) => toast.error(`Erro ao inativar cliente: ${(error as Error).message}`),
+    onError: (error) => toast.error(`Erro ao inativar cliente: ${mensagemErro(error)}`),
   });
 
   const reativarAluno = useMutation({
@@ -297,7 +298,7 @@ function AlunoDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
       void queryClient.invalidateQueries({ queryKey: ["turma"] });
     },
-    onError: (error) => toast.error(`Erro ao reativar cliente: ${(error as Error).message}`),
+    onError: (error) => toast.error(`Erro ao reativar cliente: ${mensagemErro(error)}`),
   });
 
   const gerarAcesso = useMutation({
@@ -308,7 +309,7 @@ function AlunoDetalhe() {
       });
       void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
     },
-    onError: (error) => toast.error((error as Error).message),
+    onError: (error) => toast.error(mensagemErro(error)),
   });
 
   const criarContrato = useMutation({
@@ -347,7 +348,7 @@ function AlunoDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["turma"] });
     },
     onError: (error) =>
-      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
+      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : mensagemErro(error)),
   });
 
   const updateContrato = useMutation({
@@ -384,7 +385,7 @@ function AlunoDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["turma"] });
     },
     onError: (error) =>
-      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
+      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : mensagemErro(error)),
   });
 
   const deleteContrato = useMutation({
@@ -398,7 +399,7 @@ function AlunoDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
       void queryClient.invalidateQueries({ queryKey: ["turma"] });
     },
-    onError: (error) => toast.error(`Erro ao excluir contrato: ${(error as Error).message}`),
+    onError: (error) => toast.error(`Erro ao excluir contrato: ${mensagemErro(error)}`),
   });
 
   const toggleParcela = useMutation({
@@ -414,7 +415,7 @@ function AlunoDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
       void queryClient.invalidateQueries({ queryKey: ["turma"] });
     },
-    onError: (error) => toast.error((error as Error).message),
+    onError: (error) => toast.error(mensagemErro(error)),
   });
 
   const salvarContratoTexto = useMutation({
@@ -437,7 +438,7 @@ function AlunoDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
       void queryClient.invalidateQueries({ queryKey: ["turma"] });
     },
-    onError: (error) => toast.error(`Erro ao salvar contrato: ${(error as Error).message}`),
+    onError: (error) => toast.error(`Erro ao salvar contrato: ${mensagemErro(error)}`),
   });
 
   const handleBaixarContratoPdf = () => {

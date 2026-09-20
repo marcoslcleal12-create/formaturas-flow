@@ -32,6 +32,7 @@ import {
   type AlunoListItem,
 } from "@/lib/api/alunos";
 import { listContratos, type Contrato } from "@/lib/api/contratos";
+import { mensagemErro } from "@/lib/api/errors";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -202,7 +203,7 @@ function TurmaDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["turma", turmaId] });
       void queryClient.invalidateQueries({ queryKey: ["turmas"] });
     },
-    onError: (error) => toast.error(`Erro ao salvar pacotes: ${(error as Error).message}`),
+    onError: (error) => toast.error(`Erro ao salvar pacotes: ${mensagemErro(error)}`),
   });
 
   const togglePacote = (id: string) => {
@@ -273,7 +274,7 @@ function TurmaDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["turmas"] });
     },
     onError: (error) =>
-      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
+      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : mensagemErro(error)),
   });
 
   const deleteTurma = useMutation({
@@ -285,7 +286,7 @@ function TurmaDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["turmas"] });
       void navigate({ to: "/turmas" });
     },
-    onError: (error) => toast.error(`Erro ao excluir turma: ${(error as Error).message}`),
+    onError: (error) => toast.error(`Erro ao excluir turma: ${mensagemErro(error)}`),
   });
 
   const updateAluno = useMutation({
@@ -311,7 +312,7 @@ function TurmaDetalhe() {
       void queryClient.invalidateQueries({ queryKey: ["aluno"] });
     },
     onError: (error) =>
-      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : (error as Error).message),
+      toast.error(error instanceof z.ZodError ? error.issues[0]!.message : mensagemErro(error)),
   });
 
   const deleteAluno = useMutation({
@@ -323,7 +324,7 @@ function TurmaDetalhe() {
       setDeletingAluno(null);
       void queryClient.invalidateQueries({ queryKey: ["turma", turmaId] });
     },
-    onError: (error) => toast.error(`Erro ao excluir formando: ${(error as Error).message}`),
+    onError: (error) => toast.error(`Erro ao excluir formando: ${mensagemErro(error)}`),
   });
 
   const hoje = new Date().toISOString().slice(0, 10);

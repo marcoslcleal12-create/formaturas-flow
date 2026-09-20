@@ -5,6 +5,7 @@ import { UserCheck, Search, Building2, UserX, AlertCircle, RefreshCw } from "luc
 import { toast } from "sonner";
 import { listAlunos, reativarAluno as apiReativarAluno } from "@/lib/api/alunos";
 import { listTurmas } from "@/lib/api/turmas";
+import { mensagemErro } from "@/lib/api/errors";
 import { AppShell } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,7 +50,7 @@ function InativosPage() {
       void queryClient.invalidateQueries({ queryKey: ["inativos"] });
       void queryClient.invalidateQueries({ queryKey: ["turmas"] });
     },
-    onError: (error) => toast.error(`Erro ao reativar cliente: ${(error as Error).message}`),
+    onError: (error) => toast.error(`Erro ao reativar cliente: ${mensagemErro(error)}`),
   });
 
   const filteredInativos = inativos.filter((item) => {
