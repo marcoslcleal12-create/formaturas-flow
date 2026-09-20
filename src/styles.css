@@ -71,45 +71,48 @@
 
 :root {
   --radius: 0.875rem;
-  --background: oklch(0.985 0.006 95);
-  --foreground: oklch(0.22 0.045 262);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.22 0.045 262);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.22 0.045 262);
-  --primary: oklch(0.31 0.085 262);
-  --primary-foreground: oklch(0.98 0.01 95);
-  --secondary: oklch(0.95 0.018 95);
-  --secondary-foreground: oklch(0.31 0.085 262);
-  --muted: oklch(0.955 0.01 95);
-  --muted-foreground: oklch(0.52 0.03 262);
+  /*  Tema JM Fotografia: preto profundo com detalhes em dourado. Fundo bem
+      escuro pra as fotos ganharem destaque. Sidebar continua um pouco mais
+      escura que o body pra dar hierarquia visual. */
+  --background: oklch(0.09 0.008 265);
+  --foreground: oklch(0.96 0.005 95);
+  --card: oklch(0.14 0.012 265);
+  --card-foreground: oklch(0.96 0.005 95);
+  --popover: oklch(0.14 0.012 265);
+  --popover-foreground: oklch(0.96 0.005 95);
+  --primary: oklch(0.79 0.13 82);
+  --primary-foreground: oklch(0.14 0.012 265);
+  --secondary: oklch(0.20 0.02 265);
+  --secondary-foreground: oklch(0.96 0.005 95);
+  --muted: oklch(0.18 0.018 265);
+  --muted-foreground: oklch(0.68 0.02 95);
   --accent: oklch(0.79 0.13 82);
-  --accent-foreground: oklch(0.24 0.05 262);
-  --destructive: oklch(0.56 0.21 27);
-  --destructive-foreground: oklch(0.985 0.003 95);
-  --success: oklch(0.62 0.15 152);
+  --accent-foreground: oklch(0.14 0.012 265);
+  --destructive: oklch(0.62 0.22 27);
+  --destructive-foreground: oklch(0.99 0.003 95);
+  --success: oklch(0.66 0.16 152);
   --success-foreground: oklch(0.99 0.01 152);
   --warning: oklch(0.79 0.15 78);
-  --warning-foreground: oklch(0.26 0.05 78);
-  --border: oklch(0.9 0.012 95);
-  --input: oklch(0.9 0.012 95);
+  --warning-foreground: oklch(0.14 0.012 265);
+  --border: oklch(0.24 0.02 265);
+  --input: oklch(0.22 0.02 265);
   --ring: oklch(0.79 0.13 82);
-  --gradient-brand: linear-gradient(135deg, oklch(0.31 0.085 262), oklch(0.24 0.06 275));
+  --gradient-brand: linear-gradient(135deg, oklch(0.14 0.012 265), oklch(0.20 0.03 275));
   --gradient-gold: linear-gradient(135deg, oklch(0.84 0.13 88), oklch(0.72 0.14 70));
-  --shadow-card: 0 1px 2px oklch(0.22 0.045 262 / 6%), 0 8px 24px oklch(0.22 0.045 262 / 6%);
-  --shadow-elevated: 0 12px 40px oklch(0.22 0.045 262 / 14%);
-  --chart-1: oklch(0.31 0.085 262);
-  --chart-2: oklch(0.79 0.13 82);
-  --chart-3: oklch(0.62 0.15 152);
-  --chart-4: oklch(0.56 0.21 27);
-  --chart-5: oklch(0.6 0.09 262);
-  --sidebar: oklch(0.26 0.06 265);
-  --sidebar-foreground: oklch(0.95 0.01 95);
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 40%), 0 8px 24px oklch(0 0 0 / 30%);
+  --shadow-elevated: 0 12px 40px oklch(0 0 0 / 50%);
+  --chart-1: oklch(0.79 0.13 82);
+  --chart-2: oklch(0.66 0.16 152);
+  --chart-3: oklch(0.62 0.22 27);
+  --chart-4: oklch(0.60 0.12 262);
+  --chart-5: oklch(0.75 0.11 300);
+  --sidebar: oklch(0.06 0.005 265);
+  --sidebar-foreground: oklch(0.94 0.008 95);
   --sidebar-primary: oklch(0.79 0.13 82);
-  --sidebar-primary-foreground: oklch(0.24 0.05 262);
-  --sidebar-accent: oklch(0.32 0.06 265);
-  --sidebar-accent-foreground: oklch(0.97 0.01 95);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-primary-foreground: oklch(0.14 0.012 265);
+  --sidebar-accent: oklch(0.16 0.015 265);
+  --sidebar-accent-foreground: oklch(0.96 0.008 95);
+  --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.79 0.13 82);
 }
 

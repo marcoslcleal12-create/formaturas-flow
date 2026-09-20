@@ -14,12 +14,14 @@ import {
   UserCheck, 
   User, 
   Package, 
-  FileText, 
+  FileText,
   Eye,
-  CheckCircle2
+  CheckCircle2,
+  Phone
 } from "lucide-react";
 import { toast } from "sonner";
 import { listMeusAlunos, type Aluno as ApiAluno } from "@/lib/api/alunos";
+import { EMPRESA, whatsappLink } from "@/lib/empresa";
 import { AppShell } from "@/components/app/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -421,62 +423,28 @@ function PainelAluno() {
 
             {/* Card 2: Minhas Fotos Selecionadas */}
             {aluno.fotosLiberadas && (
-              <Card className="shadow-card h-full flex flex-col">
-                <CardHeader className="p-4 pb-3">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
-                    <CheckCircle2 className="size-4 text-primary shrink-0" />
-                    MINHAS FOTOS SELECIONADAS
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1 flex flex-col justify-center">
-                {(() => {
-                  const expirou = aluno.vencimentoFotosSelecionadas && new Date() > new Date(aluno.vencimentoFotosSelecionadas + "T23:59:59");
-                  if (expirou) {
-                    return (
-                      <div className="text-[11px] text-destructive text-justify leading-relaxed">
-                        <p className="mb-2 font-medium">Verificamos que o link de acesso às suas fotos já expirou, pois ultrapassou o prazo de armazenamento estabelecido pela empresa.</p>
-                        <p className="mb-2">Durante esse período, as fotos permaneceram armazenadas em nosso sistema, o que gerou custos de manutenção e backup dos arquivos. Como o prazo estipulado já foi ultrapassado, o acesso às fotos não está mais disponível pelo link anterior.</p>
-                        <p>Caso queira recuperar o acesso às suas fotos, pedimos que entre em contato conosco para verificarmos a disponibilidade dos arquivos e realizarmos uma nova negociação referente ao período adicional de armazenamento e recuperação.</p>
-                      </div>
-                    );
-                  }
-                  return (
-                    <Button asChild className="w-full h-8 text-xs" disabled={!aluno.linkFotosSelecionadas}>
-                      {aluno.linkFotosSelecionadas ? (
-                        <a href={aluno.linkFotosSelecionadas} target="_blank" rel="noopener noreferrer">
-                          Acessar Fotos <ExternalLink className="size-3.5 ml-1.5" />
-                        </a>
-                      ) : (
-                        <span className="pointer-events-none opacity-50">Acessar Fotos</span>
-                      )}
-                    </Button>
-                  );
-                })()}
-              </CardContent>
-            </Card>
+              <AcessoMidiaCard
+                titulo="MINHAS FOTOS SELECIONADAS"
+                icone={<CheckCircle2 className="size-4 text-primary shrink-0" />}
+                link={aluno.linkFotosSelecionadas ?? null}
+                vencimento={aluno.vencimentoFotosSelecionadas ?? null}
+                labelBotao="Acessar Fotos"
+                assuntoWhatsapp={`Olá! Sou ${aluno.nomeCompleto} (CPF ${aluno.cpf ?? ""}) e o prazo de acesso às minhas fotos venceu. Gostaria de negociar a recuperação dos arquivos.`}
+                textoExpirado="Verificamos que o prazo de acesso às suas fotos já venceu. Durante o período combinado, os arquivos ficaram disponíveis em nosso sistema para download. Como o prazo terminou, o acesso foi encerrado."
+              />
             )}
 
             {/* Card 3: Aprovação de Álbum */}
             {aluno.albumLiberado && (
-              <Card className="shadow-card h-full flex flex-col">
-                <CardHeader className="p-4 pb-3">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
-                    <FileText className="size-4 text-primary shrink-0" />
-                    APROVAÇÃO DE ÁLBUM
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1 flex flex-col justify-center">
-                  <Button asChild className="w-full h-8 text-xs" disabled={!aluno.linkAprovacaoAlbum}>
-                    {aluno.linkAprovacaoAlbum ? (
-                      <a href={aluno.linkAprovacaoAlbum} target="_blank" rel="noopener noreferrer">
-                        Acessar Álbum <ExternalLink className="size-3.5 ml-1.5" />
-                      </a>
-                    ) : (
-                      <span className="pointer-events-none opacity-50">Acessar Álbum</span>
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
+              <AcessoMidiaCard
+                titulo="APROVAÇÃO DE ÁLBUM"
+                icone={<FileText className="size-4 text-primary shrink-0" />}
+                link={aluno.linkAprovacaoAlbum ?? null}
+                vencimento={aluno.vencimentoAprovacaoAlbum ?? null}
+                labelBotao="Acessar Álbum"
+                assuntoWhatsapp={`Olá! Sou ${aluno.nomeCompleto} (CPF ${aluno.cpf ?? ""}) e o prazo de aprovação do meu álbum venceu. Gostaria de retomar o processo.`}
+                textoExpirado="O prazo para aprovação do seu álbum já venceu. O envio automático pelo link foi encerrado, mas ainda é possível retomar entrando em contato com nossa equipe."
+              />
             )}
           </div>
 
@@ -735,5 +703,69 @@ function Info({ label, value }: { label: string; value?: string | null | undefin
       <span className="text-muted-foreground">{label}</span>
       <span className="text-right font-medium">{value || "—"}</span>
     </p>
+  );
+}
+
+function AcessoMidiaCard({
+  titulo,
+  icone,
+  link,
+  vencimento,
+  labelBotao,
+  textoExpirado,
+  assuntoWhatsapp,
+}: {
+  titulo: string;
+  icone: React.ReactNode;
+  link: string | null;
+  vencimento: string | null;
+  labelBotao: string;
+  textoExpirado: string;
+  assuntoWhatsapp: string;
+}) {
+  const expirou = !!(vencimento && new Date() > new Date(vencimento + "T23:59:59"));
+  const dataVencBR = vencimento ? new Date(vencimento + "T12:00:00").toLocaleDateString("pt-BR") : null;
+
+  return (
+    <Card className="shadow-card h-full flex flex-col">
+      <CardHeader className="p-4 pb-3">
+        <CardTitle className="text-sm font-semibold flex items-center gap-1.5 shrink-0">
+          {icone}
+          {titulo}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 pt-0 border-t border-border/40 mt-1 pt-2.5 flex-1 flex flex-col justify-center gap-2">
+        {expirou ? (
+          <div className="space-y-2">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-[11px] text-destructive leading-relaxed">
+              <p className="font-medium mb-1.5">Prazo encerrado{dataVencBR ? ` em ${dataVencBR}` : ""}.</p>
+              <p className="text-destructive/90">{textoExpirado}</p>
+            </div>
+            <Button asChild className="w-full h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
+              <a href={whatsappLink(assuntoWhatsapp)} target="_blank" rel="noopener noreferrer">
+                <Phone className="size-3.5" /> Falar com {EMPRESA.nome} no WhatsApp
+              </a>
+            </Button>
+          </div>
+        ) : (
+          <>
+            <Button asChild className="w-full h-8 text-xs" disabled={!link}>
+              {link ? (
+                <a href={link} target="_blank" rel="noopener noreferrer">
+                  {labelBotao} <ExternalLink className="size-3.5 ml-1.5" />
+                </a>
+              ) : (
+                <span className="pointer-events-none opacity-50">{labelBotao}</span>
+              )}
+            </Button>
+            {dataVencBR && (
+              <p className="text-[10px] text-muted-foreground text-center">
+                Acesso válido até <strong>{dataVencBR}</strong>
+              </p>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

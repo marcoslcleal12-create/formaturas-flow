@@ -241,6 +241,7 @@ function AlunoDetalhe() {
       prazoFotosSelecionadas?: number | null;
       fotosLiberadas?: boolean;
       linkAprovacaoAlbum?: string | null;
+      prazoAprovacaoAlbum?: number | null;
       albumLiberado?: boolean;
     }) => {
       await apiUpdateAlunoLinks(alunoId, input);
@@ -992,6 +993,11 @@ function AlunoDetalhe() {
                           placeholder="Ex: 150"
                           defaultValue={aluno.prazoFotosSelecionadas ?? ""}
                         />
+                        {aluno.vencimentoFotosSelecionadas && (
+                          <p className="text-[10px] text-muted-foreground">
+                            Vence em {new Date(aluno.vencimentoFotosSelecionadas + "T12:00:00").toLocaleDateString("pt-BR")}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center space-x-2 pt-1 pb-1">
                         <Switch
@@ -1034,8 +1040,10 @@ function AlunoDetalhe() {
                       onSubmit={(e) => {
                         e.preventDefault();
                         const form = new FormData(e.currentTarget);
+                        const prazoStr = form.get("prazo_aprovacao_album") as string;
                         updateLinksAluno.mutate({
                           linkAprovacaoAlbum: (form.get("link_aprovacao_album") as string) || null,
+                          prazoAprovacaoAlbum: prazoStr ? parseInt(prazoStr, 10) : null,
                           albumLiberado: form.get("album_liberado") === "on",
                         });
                       }}
@@ -1048,6 +1056,21 @@ function AlunoDetalhe() {
                           placeholder="https://..."
                           defaultValue={aluno.linkAprovacaoAlbum || ""}
                         />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Prazo de Aprovação (Dias)</Label>
+                        <Input
+                          name="prazo_aprovacao_album"
+                          type="number"
+                          className="h-8 text-xs"
+                          placeholder="Ex: 30"
+                          defaultValue={aluno.prazoAprovacaoAlbum ?? ""}
+                        />
+                        {aluno.vencimentoAprovacaoAlbum && (
+                          <p className="text-[10px] text-muted-foreground">
+                            Vence em {new Date(aluno.vencimentoAprovacaoAlbum + "T12:00:00").toLocaleDateString("pt-BR")}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center space-x-2 pt-1 pb-1">
                         <Switch

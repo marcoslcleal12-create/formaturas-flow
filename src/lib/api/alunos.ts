@@ -25,6 +25,8 @@ export type Aluno = {
   vencimentoFotosSelecionadas?: string | null;
   fotosLiberadas: boolean;
   linkAprovacaoAlbum?: string | null;
+  prazoAprovacaoAlbum?: number | null;
+  vencimentoAprovacaoAlbum?: string | null;
   albumLiberado: boolean;
   asaasCustomerId?: string | null;
   criadoEm: string;
@@ -68,6 +70,8 @@ export type AlunoLinksInput = {
   vencimentoFotosSelecionadas?: string | null | undefined;
   fotosLiberadas?: boolean | undefined;
   linkAprovacaoAlbum?: string | null | undefined;
+  prazoAprovacaoAlbum?: number | null | undefined;
+  vencimentoAprovacaoAlbum?: string | null | undefined;
   albumLiberado?: boolean | undefined;
 };
 
