@@ -94,6 +94,36 @@ export async function deleteContrato(id: string): Promise<void> {
   await apiFetch({ method: "DELETE", path: `/api/v1/contratos/${id}` });
 }
 
+/*  Assinatura eletronica do contrato.
+
+    `textoIntacto` e o campo que importa na tela: o servidor recalcula o
+    SHA-256 do texto atual e compara com o que foi assinado.  Mostrar
+    "assinado" sem olhar isso esconderia justamente o caso em que as
+    clausulas mudaram depois do aceite.  */
+export type Assinatura = {
+  contratoId: string;
+  assinado: boolean;
+  textoIntacto: boolean;
+  assinanteNome?: string | null;
+  assinanteCpf?: string | null;
+  assinadoEm?: string | null;
+  assinadoIp?: string | null;
+  assinadoUserAgent?: string | null;
+  hashDocumento?: string | null;
+  assinaturaImagem?: string | null;
+};
+
+export async function getAssinatura(id: string, opts?: { signal?: AbortSignal }): Promise<Assinatura> {
+  return apiFetch<Assinatura>({ method: "GET", path: `/api/v1/contratos/${id}/assinatura`, ...(opts?.signal ? { signal: opts.signal } : {}) });
+}
+
+export async function assinarContrato(
+  id: string,
+  body: { imagem: string; nome?: string | undefined; cpf?: string | undefined },
+): Promise<Assinatura> {
+  return apiFetch<Assinatura>({ method: "POST", path: `/api/v1/contratos/${id}/assinar`, body });
+}
+
 export async function listParcelas(opts?: { status?: string; signal?: AbortSignal }): Promise<Parcela[]> {
   const qs = opts?.status ? `?status=${encodeURIComponent(opts.status)}` : "";
   return apiFetch<Parcela[]>({ method: "GET", path: `/api/v1/parcelas${qs}`, ...(opts?.signal ? { signal: opts.signal } : {}) });
