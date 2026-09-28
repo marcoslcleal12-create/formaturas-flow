@@ -304,7 +304,7 @@ export function DemandaManager({
   const handleGeneratePdf = (demanda: DemandaItem) => {
     gerarContratoPdf({
       aluno: {
-        nome_completo: demanda.cliente,
+        nomeCompleto: demanda.cliente,
         cpf: formatarCpf(demanda.cpf),
         endereco: demanda.local,
         cidade: demanda.local.split("-")[1]?.trim() || "São Paulo, SP",
@@ -313,21 +313,21 @@ export function DemandaManager({
       },
       contrato: {
         pacote: demanda.pacote,
-        valor_total: demanda.valorTotal,
+        valorTotal: demanda.valorTotal,
         desconto: demanda.desconto,
-        valor_entrada: demanda.valorEntrada,
-        dia_vencimento: demanda.diaVencimento,
-        data_contrato: demanda.dataEvento,
-        forma_pagamento: demanda.formaPagamento,
-        autoriza_imagem: true,
+        valorEntrada: demanda.valorEntrada,
+        diaVencimento: demanda.diaVencimento,
+        dataContrato: demanda.dataEvento,
+        formaPagamento: demanda.formaPagamento,
+        autorizaImagem: true,
       },
       parcelas: demanda.parcelas.map((p) => ({
         numero: p.numero,
         vencimento: p.vencimento,
         valor: p.valor,
         status: p.status,
-        data_pagamento: p.dataPagamento ?? null,
-        forma_pagamento: demanda.formaPagamento ?? null,
+        dataPagamento: p.dataPagamento ?? null,
+        formaPagamento: demanda.formaPagamento ?? null,
       })),
       texto: `CONTRATO DE PRESTAÇÃO DE SERVIÇOS FOTOGRÁFICOS E EVENTOS
 

@@ -37,6 +37,10 @@ export const alunos = {
   inativar: (id: string, motivo?: string) => api.post<Aluno>(`/api/v1/alunos/${id}/inativar`, { motivo }),
   reativar: (id: string) => api.post<Aluno>(`/api/v1/alunos/${id}/reativar`),
   links:    (id: string, dados: Record<string, unknown>) => api.put<Aluno>(`/api/v1/alunos/${id}/links`, dados),
+
+  /*  Vincula (ou cria) o acesso do formando à conta Identity.  */
+  vincularAcesso: (id: string, email: string) =>
+    api.post<Aluno>(`/api/v1/alunos/${id}/vincular-user`, { email }),
 }
 
 export const contratos = {

@@ -4,9 +4,8 @@ import { useState } from "react";
 import { ArrowLeft, KeyRound, Plus, Edit, Trash2, CreditCard, User, AlertCircle, FileText, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { useServerFn } from "@tanstack/react-start";
-import { supabase } from "@/integrations/supabase/client";
-import { criarAcessoFormando } from "@/lib/alunos.functions";
+import { alunos as apiAlunos, contratos as apiContratos, parcelas as apiParcelas } from "@/lib/recursos";
+import { cpfParaEmail } from "@/lib/aluno-login";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { ContratoDocumento } from "@/components/app/ContratoDocumento";
 import { FORMAS_PAGAMENTO } from "@/lib/contrato-modelo";
@@ -48,21 +47,21 @@ export const Route = createFileRoute("/_authenticated/alunos/$alunoId")({
 
 const contratoSchema = z.object({
   pacote: z.string().trim().min(2, "Informe o pacote").max(120),
-  valor_total: z.number().positive("Valor total inválido"),
+  valorTotal: z.number().positive("Valor total inválido"),
   desconto: z.number().min(0),
-  valor_entrada: z.number().min(0),
-  num_parcelas: z.number().int().min(1).max(60),
-  dia_vencimento: z.number().int().min(1).max(28),
-  primeiro_vencimento: z.string().min(10, "Informe o primeiro vencimento"),
-  forma_pagamento: z.string().min(2),
+  valorEntrada: z.number().min(0),
+  numParcelas: z.number().int().min(1).max(60),
+  diaVencimento: z.number().int().min(1).max(28),
+  primeiroVencimento: z.string().min(10, "Informe o primeiro vencimento"),
+  formaPagamento: z.string().min(2),
 });
 
 const alunoEditSchema = z.object({
-  nome_completo: z.string().trim().min(3, "Informe o nome completo").max(120),
+  nomeCompleto: z.string().trim().min(3, "Informe o nome completo").max(120),
   cpf: z.string().trim().max(20).optional(),
   whatsapp: z.string().trim().max(20).optional(),
   email: z.string().trim().email("E-mail inválido").max(255).optional().or(z.literal("")),
-  data_nascimento: z.string().trim().max(10).optional(),
+  dataNascimento: z.string().trim().max(10).optional(),
   cidade: z.string().trim().max(120).optional(),
   endereco: z.string().trim().max(200).optional(),
 });
@@ -86,24 +85,15 @@ function AlunoDetalhe() {
   const [showDados, setShowDados] = useState(false);
   const [showTurma, setShowTurma] = useState(false);
 
-  const criarAcesso = useServerFn(criarAcessoFormando);
 
   const { data } = useQuery({
     queryKey: ["aluno", alunoId],
     queryFn: async () => {
-      const aluno = await supabase
-        .from("alunos")
-        .select("*, turmas(id, nome, curso, faculdade)")
-        .eq("id", alunoId)
-        .maybeSingle();
-      if (aluno.error) throw aluno.error;
-      const contrato = await supabase
-        .from("contratos")
-        .select("*, parcelas(*)")
-        .eq("aluno_id", alunoId)
-        .maybeSingle();
-      if (contrato.error) throw contrato.error;
-      return { aluno: aluno.data, contrato: contrato.data };
+      const [aluno, lista] = await Promise.all([
+        apiAlunos.obter(alunoId),
+        apiContratos.listar({ alunoId }),
+      ]);
+      return { aluno, contrato: lista[0] ?? null };
     },
   });
 
@@ -115,28 +105,24 @@ function AlunoDetalhe() {
   const updateAluno = useMutation({
     mutationFn: async (form: FormData) => {
       const parsed = alunoEditSchema.parse({
-        nome_completo: form.get("nome_completo"),
+        nomeCompleto: form.get("nomeCompleto"),
         cpf: form.get("cpf") || undefined,
         whatsapp: form.get("whatsapp") || undefined,
         email: form.get("email") || undefined,
-        data_nascimento: form.get("data_nascimento") || undefined,
+        dataNascimento: form.get("dataNascimento") || undefined,
         cidade: form.get("cidade") || undefined,
         endereco: form.get("endereco") || undefined,
       });
 
-      const { error } = await supabase
-        .from("alunos")
-        .update({
-          nome_completo: parsed.nome_completo,
-          cpf: parsed.cpf ? parsed.cpf.replace(/\D/g, "") : null,
-          whatsapp: parsed.whatsapp ?? null,
-          email: parsed.email || null,
-          data_nascimento: parsed.data_nascimento || null,
-          cidade: parsed.cidade ?? null,
-          endereco: parsed.endereco ?? null,
-        })
-        .eq("id", alunoId);
-      if (error) throw error;
+      await apiAlunos.atualizar(alunoId, {
+        nomeCompleto: parsed.nomeCompleto,
+        cpf: parsed.cpf ? parsed.cpf.replace(/\D/g, "") : null,
+        whatsapp: parsed.whatsapp ?? null,
+        email: parsed.email || null,
+        dataNascimento: parsed.dataNascimento || null,
+        cidade: parsed.cidade ?? null,
+        endereco: parsed.endereco ?? null,
+      });
     },
     onSuccess: () => {
       toast.success("Dados do formando atualizados com sucesso!");
@@ -151,9 +137,8 @@ function AlunoDetalhe() {
   // Delete Aluno Mutation
   const deleteAluno = useMutation({
     mutationFn: async () => {
-      const turmaId = aluno?.turma_id;
-      const { error } = await supabase.from("alunos").delete().eq("id", alunoId);
-      if (error) throw error;
+      const turmaId = aluno?.turmaId;
+      await apiAlunos.remover(alunoId);
       return turmaId;
     },
     onSuccess: (turmaId) => {
@@ -170,9 +155,13 @@ function AlunoDetalhe() {
 
   // Generate Access Mutation
   const gerarAcesso = useMutation({
-    mutationFn: () => criarAcesso({ data: { alunoId } }),
+    mutationFn: () => {
+      /*  O acesso do formando é o CPF; sem ele não há e-mail para vincular.  */
+      if (!aluno?.cpf) throw new Error("Cadastre o CPF do formando antes de liberar o acesso.");
+      return apiAlunos.vincularAcesso(alunoId, cpfParaEmail(aluno.cpf));
+    },
     onSuccess: (res) => {
-      toast.success(`Acesso criado — login e senha: CPF ${res.login}`, {
+      toast.success(`Acesso criado — login e senha: CPF ${res.loginUsuario ?? res.cpf ?? ""}`, {
         duration: 12000,
       });
       void queryClient.invalidateQueries({ queryKey: ["aluno", alunoId] });
@@ -185,65 +174,32 @@ function AlunoDetalhe() {
     mutationFn: async (form: FormData) => {
       const parsed = contratoSchema.parse({
         pacote: form.get("pacote"),
-        valor_total: num(form, "valor_total"),
+        valorTotal: num(form, "valorTotal"),
         desconto: num(form, "desconto"),
-        valor_entrada: num(form, "valor_entrada"),
-        num_parcelas: num(form, "num_parcelas"),
-        dia_vencimento: num(form, "dia_vencimento"),
-        primeiro_vencimento: String(form.get("primeiro_vencimento") ?? ""),
-        forma_pagamento: String(form.get("forma_pagamento") ?? "boleto"),
+        valorEntrada: num(form, "valorEntrada"),
+        numParcelas: num(form, "numParcelas"),
+        diaVencimento: num(form, "diaVencimento"),
+        primeiroVencimento: String(form.get("primeiroVencimento") ?? ""),
+        formaPagamento: String(form.get("formaPagamento") ?? "boleto"),
       });
 
-      const financiado = parsed.valor_total - parsed.desconto - parsed.valor_entrada;
+      const financiado = parsed.valorTotal - parsed.desconto - parsed.valorEntrada;
       if (financiado <= 0) throw new Error("O valor a parcelar precisa ser maior que zero.");
 
-      const { data: novo, error } = await supabase
-        .from("contratos")
-        .insert({
-          aluno_id: alunoId,
-          turma_id: aluno?.turma_id ?? null,
-          pacote: parsed.pacote,
-          valor_total: parsed.valor_total,
-          desconto: parsed.desconto,
-          valor_entrada: parsed.valor_entrada,
-          num_parcelas: parsed.num_parcelas,
-          dia_vencimento: parsed.dia_vencimento,
-          forma_pagamento: parsed.forma_pagamento,
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
-
-      const base = Math.floor((financiado / parsed.num_parcelas) * 100) / 100;
-      const resto = Math.round((financiado - base * parsed.num_parcelas) * 100) / 100;
-      const inicio = new Date(`${parsed.primeiro_vencimento}T12:00:00`);
-
-      const linhas = Array.from({ length: parsed.num_parcelas }, (_, i) => {
-        const venc = new Date(inicio);
-        venc.setMonth(venc.getMonth() + i);
-        return {
-          contrato_id: novo.id,
-          numero: i + 1,
-          valor: i === 0 ? Math.round((base + resto) * 100) / 100 : base,
-          vencimento: venc.toISOString().slice(0, 10),
-        };
+      /*  A API cria contrato e parcelas numa transação só; o rateio que
+          existia aqui virou regra de servidor, para a tela não ser mais a
+          dona do cálculo do dinheiro.  */
+      await apiContratos.criar({
+        alunoId,
+        pacote: parsed.pacote,
+        valorTotal: parsed.valorTotal,
+        desconto: parsed.desconto,
+        valorEntrada: parsed.valorEntrada,
+        numParcelas: parsed.numParcelas,
+        diaVencimento: parsed.diaVencimento,
+        formaPagamento: parsed.formaPagamento,
+        primeiroVencimento: parsed.primeiroVencimento,
       });
-      const hojeIso = new Date().toISOString().slice(0, 10);
-      const comEntrada =
-        parsed.valor_entrada > 0
-          ? [
-              {
-                contrato_id: novo.id,
-                numero: 0,
-                valor: parsed.valor_entrada,
-                vencimento: hojeIso,
-              },
-              ...linhas,
-            ]
-          : linhas;
-
-      const { error: parcelasError } = await supabase.from("parcelas").insert(comEntrada);
-      if (parcelasError) throw parcelasError;
     },
     onSuccess: () => {
       toast.success("Contrato e parcelas gerados com sucesso!");
@@ -261,69 +217,31 @@ function AlunoDetalhe() {
       if (!contrato) return;
       const parsed = contratoSchema.parse({
         pacote: form.get("pacote"),
-        valor_total: num(form, "valor_total"),
+        valorTotal: num(form, "valorTotal"),
         desconto: num(form, "desconto"),
-        valor_entrada: num(form, "valor_entrada"),
-        num_parcelas: num(form, "num_parcelas"),
-        dia_vencimento: num(form, "dia_vencimento"),
-        primeiro_vencimento: String(form.get("primeiro_vencimento") ?? ""),
-        forma_pagamento: String(form.get("forma_pagamento") ?? "boleto"),
+        valorEntrada: num(form, "valorEntrada"),
+        numParcelas: num(form, "numParcelas"),
+        diaVencimento: num(form, "diaVencimento"),
+        primeiroVencimento: String(form.get("primeiroVencimento") ?? ""),
+        formaPagamento: String(form.get("formaPagamento") ?? "boleto"),
       });
 
-      const { error: updateError } = await supabase
-        .from("contratos")
-        .update({
-          pacote: parsed.pacote,
-          valor_total: parsed.valor_total,
-          desconto: parsed.desconto,
-          valor_entrada: parsed.valor_entrada,
-          num_parcelas: parsed.num_parcelas,
-          dia_vencimento: parsed.dia_vencimento,
-          forma_pagamento: parsed.forma_pagamento,
-        })
-        .eq("id", contrato.id);
-      if (updateError) throw updateError;
-
-      // Check if user wants to recalculate parcelas
       const recalcular = form.get("recalcular_parcelas") === "sim";
-      if (recalcular) {
-        const financiado = parsed.valor_total - parsed.desconto - parsed.valor_entrada;
-        if (financiado <= 0) throw new Error("O valor a parcelar precisa ser maior que zero.");
 
-        // Delete previous parcelas
-        await supabase.from("parcelas").delete().eq("contrato_id", contrato.id);
-
-        const base = Math.floor((financiado / parsed.num_parcelas) * 100) / 100;
-        const resto = Math.round((financiado - base * parsed.num_parcelas) * 100) / 100;
-        const inicio = new Date(`${parsed.primeiro_vencimento}T12:00:00`);
-
-        const linhas = Array.from({ length: parsed.num_parcelas }, (_, i) => {
-          const venc = new Date(inicio);
-          venc.setMonth(venc.getMonth() + i);
-          return {
-            contrato_id: contrato.id,
-            numero: i + 1,
-            valor: i === 0 ? Math.round((base + resto) * 100) / 100 : base,
-            vencimento: venc.toISOString().slice(0, 10),
-          };
-        });
-        const hojeIso = new Date().toISOString().slice(0, 10);
-        const comEntrada =
-          parsed.valor_entrada > 0
-            ? [
-                {
-                  contrato_id: contrato.id,
-                  numero: 0,
-                  valor: parsed.valor_entrada,
-                  vencimento: hojeIso,
-                },
-                ...linhas,
-              ]
-            : linhas;
-
-        const { error: parcelasError } = await supabase.from("parcelas").insert(comEntrada);
-        if (parcelasError) throw parcelasError;
-      }
+      /*  `recalcularParcelas` deixa o rateio no servidor, dentro da mesma
+          transação do contrato — antes a tela apagava as parcelas e
+          reinseria, e qualquer falha no meio deixava contrato sem parcela.  */
+      await apiContratos.atualizar(contrato.id, {
+        pacote: parsed.pacote,
+        valorTotal: parsed.valorTotal,
+        desconto: parsed.desconto,
+        valorEntrada: parsed.valorEntrada,
+        numParcelas: parsed.numParcelas,
+        diaVencimento: parsed.diaVencimento,
+        formaPagamento: parsed.formaPagamento,
+        recalcularParcelas: recalcular,
+        primeiroVencimento: parsed.primeiroVencimento,
+      });
     },
     onSuccess: () => {
       toast.success("Contrato e pacote atualizados com sucesso!");
@@ -339,11 +257,8 @@ function AlunoDetalhe() {
   const deleteContrato = useMutation({
     mutationFn: async () => {
       if (!contrato) return;
-      // Delete parcelas first
-      await supabase.from("parcelas").delete().eq("contrato_id", contrato.id);
-      // Delete contrato
-      const { error } = await supabase.from("contratos").delete().eq("id", contrato.id);
-      if (error) throw error;
+      /*  O servidor remove as parcelas junto com o contrato.  */
+      await apiContratos.remover(contrato.id);
     },
     onSuccess: () => {
       toast.success("Contrato excluído com sucesso. Agora você pode criar um novo.");
@@ -357,19 +272,11 @@ function AlunoDetalhe() {
   // Toggle Parcela Status Mutation
   const toggleParcela = useMutation({
     mutationFn: async ({ id, valor, pago }: { id: string; valor: number; pago: boolean }) => {
-      const { error } = await supabase
-        .from("parcelas")
-        .update(
-          pago
-            ? { status: "pendente", valor_pago: 0, data_pagamento: null }
-            : {
-                status: "pago",
-                valor_pago: valor,
-                data_pagamento: new Date().toISOString().slice(0, 10),
-              },
-        )
-        .eq("id", id);
-      if (error) throw error;
+      if (pago) await apiParcelas.desfazer(id);
+      else await apiParcelas.baixar(id, {
+        valorPago: valor,
+        dataPagamento: new Date().toISOString().slice(0, 10),
+      });
     },
     onSuccess: () => {
       toast.success("Status da parcela atualizado!");
@@ -380,15 +287,15 @@ function AlunoDetalhe() {
   });
 
   const hoje = new Date().toISOString().slice(0, 10);
-  const totalPago = parcelas.reduce((s, p) => s + Number(p.valor_pago), 0);
+  const totalPago = parcelas.reduce((s, p) => s + Number(p.valorPago), 0);
   const totalParcelas = parcelas.reduce((s, p) => s + Number(p.valor), 0);
-  const atrasadas = parcelas.filter((p) => p.status !== "pago" && p.vencimento < hoje);
+  const atrasadas = parcelas.filter((p) => p.status !== "Pago" && p.vencimento < hoje);
 
   return (
     <AppShell>
       <Link
         to="/turmas/$turmaId"
-        params={{ turmaId: aluno?.turma_id ?? "" }}
+        params={{ turmaId: aluno?.turmaId ?? "" }}
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline"
       >
         <ArrowLeft className="size-4" /> Voltar para a turma
@@ -397,15 +304,15 @@ function AlunoDetalhe() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">{aluno?.nome_completo ?? "Formando"}</h1>
-            {aluno?.user_id ? (
-              <Badge className="bg-emerald-600">Acesso Ativo (CPF: {aluno.login_usuario})</Badge>
+            <h1 className="text-2xl font-bold">{aluno?.nomeCompleto ?? "Formando"}</h1>
+            {aluno?.userId ? (
+              <Badge className="bg-emerald-600">Acesso Ativo (CPF: {aluno.loginUsuario})</Badge>
             ) : (
               <Badge variant="secondary">Sem acesso gerado</Badge>
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {aluno?.turmas?.nome ?? "Sem turma"} · CPF: {aluno?.cpf ?? "Não informado"} · Tel: {aluno?.whatsapp ?? "—"}
+            {aluno?.turma?.nome ?? "Sem turma"} · CPF: {aluno?.cpf ?? "Não informado"} · Tel: {aluno?.whatsapp ?? "—"}
           </p>
         </div>
 
@@ -423,7 +330,7 @@ function AlunoDetalhe() {
             <Trash2 className="size-4" /> Excluir Formando
           </Button>
 
-          {!aluno?.user_id && (
+          {!aluno?.userId && (
             <Button size="sm" onClick={() => gerarAcesso.mutate()} disabled={gerarAcesso.isPending} className="gap-1.5">
               <KeyRound className="size-4" /> Liberar Acesso (Login CPF)
             </Button>
@@ -431,7 +338,7 @@ function AlunoDetalhe() {
         </div>
       </div>
 
-      {!aluno?.user_id && (
+      {!aluno?.userId && (
         <Card className="mb-6 shadow-card border-gold/40 bg-gold/5">
           <CardContent className="pt-6 text-sm text-foreground flex items-center gap-3">
             <KeyRound className="size-5 text-gold shrink-0" />
@@ -459,7 +366,7 @@ function AlunoDetalhe() {
             </CardHeader>
             {showDados && (
               <CardContent className="space-y-1.5 text-sm">
-                <Info label="Nome Completo" value={aluno.nome_completo} />
+                <Info label="Nome Completo" value={aluno.nomeCompleto} />
                 <Info label="CPF" value={aluno.cpf} />
                 {aluno.rg && <Info label="RG" value={aluno.rg} />}
                 <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
@@ -488,14 +395,14 @@ function AlunoDetalhe() {
             </CardHeader>
             {showTurma && (
               <CardContent className="space-y-1.5 text-sm">
-                <Info label="Turma" value={aluno.turmas?.nome} />
-                <Info label="Curso" value={aluno.turmas?.curso} />
-                <Info label="Faculdade" value={aluno.turmas?.faculdade} />
+                <Info label="Turma" value={aluno.turma?.nome} />
+                <Info label="Curso" value={aluno.turma?.curso} />
+                <Info label="Faculdade" value={aluno.turma?.faculdade} />
                 {contrato && (
                   <>
                     <Info label="Pacote" value={contrato.pacote} />
-                    <Info label="Valor Total" value={brl(Number(contrato.valor_total))} />
-                    <Info label="Condição" value={`${contrato.num_parcelas}x no boleto`} />
+                    <Info label="Valor Total" value={brl(Number(contrato.valorTotal))} />
+                    <Info label="Condição" value={`${contrato.numParcelas}x no boleto`} />
                   </>
                 )}
               </CardContent>
@@ -531,17 +438,17 @@ function AlunoDetalhe() {
               >
                 <Campo name="pacote" label="Pacote Contratado *" defaultValue="Pacote Completo (Foto + Álbum)" required />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Campo name="valor_total" label="Valor total (R$) *" type="number" step="0.01" defaultValue="4500" required />
+                  <Campo name="valorTotal" label="Valor total (R$) *" type="number" step="0.01" defaultValue="4500" required />
                   <Campo name="desconto" label="Desconto (R$)" type="number" step="0.01" defaultValue="0" />
-                  <Campo name="valor_entrada" label="Entrada (R$)" type="number" step="0.01" defaultValue="500" />
-                  <Campo name="num_parcelas" label="Nº de parcelas *" type="number" defaultValue="10" required />
-                  <Campo name="dia_vencimento" label="Dia de vencimento *" type="number" defaultValue="10" required />
-                  <Campo name="primeiro_vencimento" label="1º vencimento *" type="date" defaultValue={hoje} required />
+                  <Campo name="valorEntrada" label="Entrada (R$)" type="number" step="0.01" defaultValue="500" />
+                  <Campo name="numParcelas" label="Nº de parcelas *" type="number" defaultValue="10" required />
+                  <Campo name="diaVencimento" label="Dia de vencimento *" type="number" defaultValue="10" required />
+                  <Campo name="primeiroVencimento" label="1º vencimento *" type="date" defaultValue={hoje} required />
                   <div className="space-y-1.5">
-                    <Label htmlFor="forma_pagamento">Forma de pagamento</Label>
+                    <Label htmlFor="formaPagamento">Forma de pagamento</Label>
                     <select
-                      id="forma_pagamento"
-                      name="forma_pagamento"
+                      id="formaPagamento"
+                      name="formaPagamento"
                       defaultValue="boleto"
                       className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     >
@@ -592,7 +499,7 @@ function AlunoDetalhe() {
       {contrato && (
         <div className="space-y-6">
           <div className="grid gap-3 sm:grid-cols-4">
-            <Resumo titulo="Valor do contrato" valor={brl(Number(contrato.valor_total))} />
+            <Resumo titulo="Valor do contrato" valor={brl(Number(contrato.valorTotal))} />
             <Resumo titulo="Total parcelado" valor={brl(totalParcelas)} />
             <Resumo titulo="Recebido" valor={brl(totalPago)} />
             <Resumo titulo="Em atraso" valor={String(atrasadas.length)} destaque={atrasadas.length > 0} />
@@ -610,7 +517,7 @@ function AlunoDetalhe() {
             </CardHeader>
             <CardContent className="space-y-2">
               {parcelas.map((p) => {
-                const pago = p.status === "pago";
+                const pago = p.status === "Pago";
                 const atrasada = !pago && p.vencimento < hoje;
                 return (
                   <div
@@ -627,7 +534,7 @@ function AlunoDetalhe() {
                       </p>
                       <p className={`text-xs ${atrasada ? "text-destructive/80 font-medium" : "text-muted-foreground"}`}>
                         Vencimento: {new Date(`${p.vencimento}T12:00:00`).toLocaleDateString("pt-BR")}
-                        {p.data_pagamento && ` · Pago em: ${new Date(`${p.data_pagamento}T12:00:00`).toLocaleDateString("pt-BR")}`}
+                        {p.dataPagamento && ` · Pago em: ${new Date(`${p.dataPagamento}T12:00:00`).toLocaleDateString("pt-BR")}`}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -655,8 +562,8 @@ function AlunoDetalhe() {
                 valor: Number(p.valor),
                 vencimento: p.vencimento,
                 status: p.status,
-                data_pagamento: p.data_pagamento,
-                forma_pagamento: p.forma_pagamento,
+                dataPagamento: p.dataPagamento,
+                formaPagamento: p.formaPagamento,
               }))}
             />
           )}
@@ -679,8 +586,8 @@ function AlunoDetalhe() {
               }}
             >
               <div className="space-y-1.5">
-                <Label htmlFor="nome_completo">Nome completo *</Label>
-                <Input id="nome_completo" name="nome_completo" defaultValue={aluno.nome_completo} required maxLength={120} />
+                <Label htmlFor="nomeCompleto">Nome completo *</Label>
+                <Input id="nomeCompleto" name="nomeCompleto" defaultValue={aluno.nomeCompleto} required maxLength={120} />
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -696,8 +603,8 @@ function AlunoDetalhe() {
                   <Input id="email" name="email" type="email" defaultValue={aluno.email || ""} placeholder="aluno@email.com" maxLength={255} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="data_nascimento">Data de Nascimento</Label>
-                  <Input id="data_nascimento" name="data_nascimento" type="date" defaultValue={aluno.data_nascimento || ""} />
+                  <Label htmlFor="dataNascimento">Data de Nascimento</Label>
+                  <Input id="dataNascimento" name="dataNascimento" type="date" defaultValue={aluno.dataNascimento || ""} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="cidade">Cidade</Label>
@@ -729,7 +636,7 @@ function AlunoDetalhe() {
               <AlertCircle className="size-5" /> Excluir Formando
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir o formando <strong>{aluno?.nome_completo}</strong>?
+              Tem certeza que deseja excluir o formando <strong>{aluno?.nomeCompleto}</strong>?
               Esta ação removerá o contrato, histórico de parcelas e login de acesso associados.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -760,20 +667,20 @@ function AlunoDetalhe() {
                 updateContrato.mutate(new FormData(e.currentTarget));
               }}
             >
-              <Campo name="pacote" label="Pacote Contratado *" defaultValue={contrato.pacote} required />
+              <Campo name="pacote" label="Pacote Contratado *" defaultValue={contrato.pacote ?? ""} required />
               <div className="grid gap-3 sm:grid-cols-2">
-                <Campo name="valor_total" label="Valor total (R$) *" type="number" step="0.01" defaultValue={String(contrato.valor_total)} required />
+                <Campo name="valorTotal" label="Valor total (R$) *" type="number" step="0.01" defaultValue={String(contrato.valorTotal)} required />
                 <Campo name="desconto" label="Desconto (R$)" type="number" step="0.01" defaultValue={String(contrato.desconto ?? 0)} />
-                <Campo name="valor_entrada" label="Entrada (R$)" type="number" step="0.01" defaultValue={String(contrato.valor_entrada ?? 0)} />
-                <Campo name="num_parcelas" label="Nº de parcelas *" type="number" defaultValue={String(contrato.num_parcelas)} required />
-                <Campo name="dia_vencimento" label="Dia de vencimento *" type="number" defaultValue={String(contrato.dia_vencimento ?? 10)} required />
-                <Campo name="primeiro_vencimento" label="1º vencimento *" type="date" defaultValue={contrato.data_contrato || hoje} required />
+                <Campo name="valorEntrada" label="Entrada (R$)" type="number" step="0.01" defaultValue={String(contrato.valorEntrada ?? 0)} />
+                <Campo name="numParcelas" label="Nº de parcelas *" type="number" defaultValue={String(contrato.numParcelas)} required />
+                <Campo name="diaVencimento" label="Dia de vencimento *" type="number" defaultValue={String(contrato.diaVencimento ?? 10)} required />
+                <Campo name="primeiroVencimento" label="1º vencimento *" type="date" defaultValue={contrato.dataContrato || hoje} required />
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label htmlFor="forma_pagamento">Forma de pagamento</Label>
+                  <Label htmlFor="formaPagamento">Forma de pagamento</Label>
                   <select
-                    id="forma_pagamento"
-                    name="forma_pagamento"
-                    defaultValue={contrato.forma_pagamento}
+                    id="formaPagamento"
+                    name="formaPagamento"
+                    defaultValue={contrato.formaPagamento ?? "boleto"}
                     className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   >
                     {FORMAS_PAGAMENTO.map((f) => (
@@ -841,7 +748,7 @@ function Resumo({ titulo, valor, destaque }: { titulo: string; valor: string; de
   );
 }
 
-function Info({ label, value }: { label: string; value?: string | null }) {
+function Info({ label, value }: { label: string; value?: string | null | undefined }) {
   if (!value) return null;
   return (
     <div className="flex justify-between py-1 border-b border-border/40 last:border-0">

@@ -76,36 +76,50 @@ export type ParcelaPdf = {
   valor: number;
   vencimento: string;
   status: string;
-  data_pagamento: string | null;
-  forma_pagamento: string | null;
+  dataPagamento: string | null;
+  formaPagamento: string | null;
+};
+
+/*  Assinatura já registrada na API.  O PDF a imprime junto com a trilha,
+    porque um contrato exportado sem a prova do aceite é justamente o
+    documento que alguém usaria para alegar que nunca assinou.  */
+export type AssinaturaPdf = {
+  imagem: string | null;
+  assinanteNome: string | null;
+  assinanteCpf: string | null;
+  assinadoEm: string | null;
+  assinadoIp: string | null;
+  hashDocumento: string | null;
+  textoIntacto: boolean;
 };
 
 export type ContratoPdfInput = {
   aluno: {
-    nome_completo: string;
+    nomeCompleto: string;
     cpf: string | null;
     endereco: string | null;
     cidade: string | null;
     telefone: string | null;
     email: string | null;
-    turma_nome?: string | null;
+    turmaNome?: string | null;
   };
   contrato: {
     pacote: string;
-    valor_total: number;
+    valorTotal: number;
     desconto: number;
-    valor_entrada: number;
-    dia_vencimento: number;
-    data_contrato: string;
-    forma_pagamento: string;
-    autoriza_imagem: boolean;
+    valorEntrada: number;
+    diaVencimento: number;
+    dataContrato: string;
+    formaPagamento: string;
+    autorizaImagem: boolean;
   };
   parcelas: ParcelaPdf[];
   texto: string;
+  assinatura?: AssinaturaPdf | null;
 };
 
 export function gerarContratoPdf(input: ContratoPdfInput) {
-  const { aluno, contrato, parcelas, texto } = input;
+  const { aluno, contrato, parcelas, texto, assinatura } = input;
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const marginX = 16;
   const largura = 210 - marginX * 2;
@@ -142,20 +156,20 @@ export function gerarContratoPdf(input: ContratoPdfInput) {
   doc.line(marginX, y - 2, 210 - marginX, y - 2);
   y += 3;
 
-  if (aluno.turma_nome) {
-    linha(`TURMA: ${aluno.turma_nome.toUpperCase()}`, { size: 11, bold: true });
+  if (aluno.turmaNome) {
+    linha(`TURMA: ${aluno.turmaNome.toUpperCase()}`, { size: 11, bold: true });
   }
   linha("DADOS DO CONTRATANTE", { size: 10, bold: true });
-  linha(`Nome: ${aluno.nome_completo}`);
+  linha(`Nome: ${aluno.nomeCompleto}`);
   linha(`CPF: ${aluno.cpf ?? "—"}          Contato: ${aluno.telefone ?? "—"}`);
   linha(`Endereço: ${aluno.endereco ?? "—"}`);
   linha(`Cidade: ${aluno.cidade ?? "—"}          E-mail: ${aluno.email ?? "—"}`, { gap: 7 });
 
   linha(`PACOTE CONTRATADO: ${contrato.pacote}`, { size: 10, bold: true });
-  const liquido = contrato.valor_total - contrato.desconto;
-  linha(`Investimento: ${money(contrato.valor_total)}${contrato.desconto > 0 ? ` (desconto de ${money(contrato.desconto)} — total a pagar ${money(liquido)})` : ""}`);
-  linha(`Forma de pagamento: ${formaPagamentoLabel(contrato.forma_pagamento)}`);
-  linha(`Dia de vencimento escolhido: ${String(contrato.dia_vencimento).padStart(2, "0")}`, { gap: 7 });
+  const liquido = contrato.valorTotal - contrato.desconto;
+  linha(`Investimento: ${money(contrato.valorTotal)}${contrato.desconto > 0 ? ` (desconto de ${money(contrato.desconto)} — total a pagar ${money(liquido)})` : ""}`);
+  linha(`Forma de pagamento: ${formaPagamentoLabel(contrato.formaPagamento)}`);
+  linha(`Dia de vencimento escolhido: ${String(contrato.diaVencimento).padStart(2, "0")}`, { gap: 7 });
 
   linha("PARCELAS", { size: 10, bold: true });
   doc.setFontSize(9);
@@ -164,8 +178,8 @@ export function gerarContratoPdf(input: ContratoPdfInput) {
     doc.setFont("helvetica", "normal");
     const rotulo = p.numero === 0 ? "Entrada" : `Parcela ${p.numero}`;
     const pago =
-      p.status === "pago"
-        ? `Pago${p.data_pagamento ? ` em ${dataBR(p.data_pagamento)}` : ""}${p.forma_pagamento ? ` via ${p.forma_pagamento}` : ""}`
+      p.status === "Pago" || p.status === "pago"
+        ? `Pago${p.dataPagamento ? ` em ${dataBR(p.dataPagamento)}` : ""}${p.formaPagamento ? ` via ${p.formaPagamento}` : ""}`
         : "Em aberto";
     doc.text(rotulo, marginX, y);
     doc.text(dataBR(p.vencimento), marginX + 34, y);
@@ -177,7 +191,7 @@ export function gerarContratoPdf(input: ContratoPdfInput) {
 
   linha("Autorização de uso de imagem:", { size: 10, bold: true });
   linha(
-    contrato.autoriza_imagem
+    contrato.autorizaImagem
       ? "( X ) Sim, autorizo a JM Formaturas & Eventos a utilizar minhas imagens em portfólio, redes sociais e materiais publicitários."
       : "( X ) Não autorizo o uso das minhas imagens em portfólio, redes sociais e materiais publicitários.",
     { size: 9, gap: 6 },
@@ -192,18 +206,68 @@ export function gerarContratoPdf(input: ContratoPdfInput) {
     linha(paragrafo, { size: 9, gap: 4.4 });
   }
 
-  y += 14;
-  quebra(24);
+  y += 12;
+  quebra(48);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text("CONTRATANTE: ______________________________________", marginX, y);
-  doc.text(`${EMPRESA.cidade}, ${dataBR(contrato.data_contrato)}`, 210 - marginX, y, { align: "right" });
-  y += 8;
-  doc.text(`${aluno.nome_completo} — CPF ${aluno.cpf ?? "—"}`, marginX, y);
+  doc.text(`${EMPRESA.cidade}, ${dataBR(contrato.dataContrato)}`, 210 - marginX, y, { align: "right" });
+  y += 6;
+
+  if (assinatura?.imagem) {
+    /*  A rubrica vai ACIMA da linha, como numa folha assinada à mão.  */
+    try {
+      doc.addImage(assinatura.imagem, "PNG", marginX, y, 56, 18);
+    }
+    catch {
+      /*  PNG corrompido não pode impedir a emissão do contrato: o bloco de
+          auditoria abaixo continua provando o aceite.  */
+    }
+    y += 19;
+  }
+  else {
+    y += 8;
+  }
+
+  doc.line(marginX, y, marginX + 90, y);
+  y += 4;
+  doc.text("CONTRATANTE", marginX, y);
+  y += 5;
+  doc.text(`${aluno.nomeCompleto} — CPF ${aluno.cpf ?? "—"}`, marginX, y);
   y += 10;
   doc.text(`CONTRATADO: ${EMPRESA.cnpj} — ${EMPRESA.responsavel}`, marginX, y);
+  y += 10;
 
-  const arquivo = `contrato-${aluno.nome_completo.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
+  if (assinatura?.assinadoEm) {
+    quebra(26);
+    doc.setDrawColor(200);
+    doc.line(marginX, y, 210 - marginX, y);
+    y += 5;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("ASSINATURA ELETRÔNICA", marginX, y);
+    y += 4;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+
+    const quando = new Date(assinatura.assinadoEm).toLocaleString("pt-BR");
+    linha(`Assinado por ${assinatura.assinanteNome ?? aluno.nomeCompleto}`
+      + (assinatura.assinanteCpf ? ` (CPF ${assinatura.assinanteCpf})` : "")
+      + ` em ${quando}`
+      + (assinatura.assinadoIp ? ` — IP ${assinatura.assinadoIp}` : ""),
+      { size: 7, gap: 3.4 });
+
+    /*  O hash é o que permite a qualquer um conferir, mais tarde, que este
+        PDF corresponde ao texto que foi aceito.  */
+    if (assinatura.hashDocumento)
+      linha(`Impressão digital do documento (SHA-256): ${assinatura.hashDocumento}`, { size: 7, gap: 3.4 });
+
+    if (!assinatura.textoIntacto)
+      linha("ATENÇÃO: o texto atual NÃO corresponde ao que foi assinado.", { size: 7, bold: true, gap: 3.4 });
+  }
+
+  const arquivo = `contrato-${aluno.nomeCompleto.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
   doc.save(arquivo);
 }
 

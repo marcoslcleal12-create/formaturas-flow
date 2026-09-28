@@ -22,7 +22,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { turmas as apiTurmas, alunos as apiAlunos, contratos as apiContratos } from "@/lib/recursos";
+import type { Aluno } from "@/lib/entidades";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,11 +76,11 @@ export const Route = createFileRoute("/_authenticated/turmas/$turmaId")({
 });
 
 const alunoSchema = z.object({
-  nome_completo: z.string().trim().min(3, "Informe o nome completo").max(120),
+  nomeCompleto: z.string().trim().min(3, "Informe o nome completo").max(120),
   cpf: z.string().trim().max(20).optional(),
   whatsapp: z.string().trim().max(20).optional(),
   email: z.string().trim().email("E-mail inválido").max(255).optional().or(z.literal("")),
-  data_nascimento: z.string().trim().max(10).optional(),
+  dataNascimento: z.string().trim().max(10).optional(),
 });
 
 const turmaEditSchema = z.object({
@@ -88,21 +89,11 @@ const turmaEditSchema = z.object({
   faculdade: z.string().trim().min(2, "Informe a faculdade").max(120),
   cidade: z.string().trim().max(120).optional(),
   semestre: z.string().trim().max(20).optional(),
-  previsao_formatura: z.string().trim().max(10).optional(),
+  previsaoFormatura: z.string().trim().max(10).optional(),
   status: z.string().optional(),
 });
 
-interface AlunoItem {
-  id: string;
-  turma_id: string;
-  nome_completo: string;
-  cpf: string | null;
-  whatsapp: string | null;
-  email: string | null;
-  data_nascimento: string | null;
-  user_id: string | null;
-  status: string;
-}
+type AlunoItem = Aluno;
 
 function TurmaDetalhe() {
   const { turmaId } = Route.useParams();
@@ -127,15 +118,13 @@ function TurmaDetalhe() {
   const { data } = useQuery({
     queryKey: ["turma", turmaId],
     queryFn: async () => {
-      const [turma, alunos, contratos] = await Promise.all([
-        supabase.from("turmas").select("*").eq("id", turmaId).maybeSingle(),
-        supabase.from("alunos").select("*").eq("turma_id", turmaId).order("nome_completo"),
-        supabase.from("contratos").select("*, parcelas(*)").eq("turma_id", turmaId),
+      const [turma, lista, contratos] = await Promise.all([
+        apiTurmas.obter(turmaId),
+        apiAlunos.listar({ turmaId }),
+        apiContratos.listar({ turmaId }),
       ]);
-      if (turma.error) throw turma.error;
-      if (alunos.error) throw alunos.error;
-      if (contratos.error) throw contratos.error;
-      return { turma: turma.data, alunos: alunos.data as AlunoItem[], contratos: contratos.data };
+      const alunos = [...lista].sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto));
+      return { turma, alunos, contratos };
     },
   });
 
@@ -165,11 +154,7 @@ function TurmaDetalhe() {
   const salvarPacotes = useMutation({
     mutationFn: async (novosPacotes: PacoteItem[]) => {
       const serialized = serializarPacotesTurma(turma?.observacoes, novosPacotes);
-      const { error } = await supabase
-        .from("turmas")
-        .update({ observacoes: serialized })
-        .eq("id", turmaId);
-      if (error) throw error;
+      await apiTurmas.atualizar(turmaId, { observacoes: serialized });
     },
     onSuccess: () => {
       toast.success("Pacotes da turma atualizados com sucesso!");
@@ -224,22 +209,18 @@ function TurmaDetalhe() {
         faculdade: form.get("faculdade"),
         cidade: form.get("cidade") || undefined,
         semestre: form.get("semestre") || undefined,
-        previsao_formatura: form.get("previsao_formatura") || undefined,
+        previsaoFormatura: form.get("previsaoFormatura") || undefined,
         status: form.get("status") || "ativa",
       });
-      const { error } = await supabase
-        .from("turmas")
-        .update({
+      await apiTurmas.atualizar(turmaId, {
           nome: parsed.nome,
           curso: parsed.curso,
           faculdade: parsed.faculdade,
           cidade: parsed.cidade ?? null,
           semestre: parsed.semestre ?? null,
-          previsao_formatura: parsed.previsao_formatura || null,
-          status: parsed.status ?? "ativa",
-        })
-        .eq("id", turmaId);
-      if (error) throw error;
+          previsaoFormatura: parsed.previsaoFormatura || null,
+          status: (parsed.status as any) || "EmAndamento",
+        });
     },
     onSuccess: () => {
       toast.success("Turma atualizada com sucesso!");
@@ -254,8 +235,7 @@ function TurmaDetalhe() {
   // Delete Turma Mutation
   const deleteTurma = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("turmas").delete().eq("id", turmaId);
-      if (error) throw error;
+      await apiTurmas.remover(turmaId);
     },
     onSuccess: () => {
       toast.success("Turma excluída com sucesso.");
@@ -270,23 +250,19 @@ function TurmaDetalhe() {
     mutationFn: async (form: FormData) => {
       if (!editingAluno) return;
       const parsed = alunoSchema.parse({
-        nome_completo: form.get("nome_completo"),
+        nomeCompleto: form.get("nomeCompleto"),
         cpf: form.get("cpf") || undefined,
         whatsapp: form.get("whatsapp") || undefined,
         email: form.get("email") || undefined,
-        data_nascimento: form.get("data_nascimento") || undefined,
+        dataNascimento: form.get("dataNascimento") || undefined,
       });
-      const { error } = await supabase
-        .from("alunos")
-        .update({
-          nome_completo: parsed.nome_completo,
-          cpf: parsed.cpf ? parsed.cpf.replace(/\D/g, "") : null,
-          whatsapp: parsed.whatsapp ?? null,
-          email: parsed.email || null,
-          data_nascimento: parsed.data_nascimento || null,
-        })
-        .eq("id", editingAluno.id);
-      if (error) throw error;
+      await apiAlunos.atualizar(editingAluno.id, {
+        nomeCompleto: parsed.nomeCompleto,
+        cpf: parsed.cpf ? parsed.cpf.replace(/\D/g, "") : null,
+        whatsapp: parsed.whatsapp ?? null,
+        email: parsed.email || null,
+        dataNascimento: parsed.dataNascimento || null,
+      });
     },
     onSuccess: () => {
       toast.success("Dados do formando atualizados!");
@@ -301,8 +277,7 @@ function TurmaDetalhe() {
   // Delete Aluno Mutation
   const deleteAluno = useMutation({
     mutationFn: async (alunoId: string) => {
-      const { error } = await supabase.from("alunos").delete().eq("id", alunoId);
-      if (error) throw error;
+      await apiAlunos.remover(alunoId);
     },
     onSuccess: () => {
       toast.success("Formando excluído com sucesso.");
@@ -315,16 +290,16 @@ function TurmaDetalhe() {
   const hoje = new Date().toISOString().slice(0, 10);
   const todasParcelas = contratos.flatMap((c) => c.parcelas ?? []);
   const contratado = contratos.reduce(
-    (s, c) => s + Number(c.valor_total) - Number(c.desconto),
+    (s, c) => s + Number(c.valorTotal) - Number(c.desconto),
     0,
   );
-  const entradas = contratos.reduce((s, c) => s + Number(c.valor_entrada), 0);
-  const recebidoParcelas = todasParcelas.reduce((s, p) => s + Number(p.valor_pago), 0);
+  const entradas = contratos.reduce((s, c) => s + Number(c.valorEntrada), 0);
+  const recebidoParcelas = todasParcelas.reduce((s, p) => s + Number(p.valorPago), 0);
   const recebido = entradas + recebidoParcelas;
   const aReceber = Math.max(contratado - recebido, 0);
   const atrasado = todasParcelas
-    .filter((p) => p.status !== "pago" && p.vencimento < hoje)
-    .reduce((s, p) => s + (Number(p.valor) - Number(p.valor_pago)), 0);
+    .filter((p) => p.status !== "Pago" && p.vencimento < hoje)
+    .reduce((s, p) => s + (Number(p.valor) - Number(p.valorPago)), 0);
   const percentual = contratado > 0 ? Math.round((recebido / contratado) * 100) : 0;
 
   return (
@@ -337,7 +312,7 @@ function TurmaDetalhe() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{turma?.nome ?? "Turma"}</h1>
-            <Badge variant={turma?.status === "ativa" ? "default" : "secondary"}>
+            <Badge variant={turma?.status === "EmAndamento" ? "default" : "secondary"}>
               {turma?.status ?? "ativa"}
             </Badge>
             <Badge variant="outline" className="gap-1.5 border-primary/40 text-primary font-medium">
@@ -568,7 +543,7 @@ function TurmaDetalhe() {
                 className="flex-1 min-w-[200px]"
               >
                 <p className="font-semibold text-foreground hover:text-primary transition-colors flex items-center gap-2">
-                  <User className="size-4 text-primary" /> {aluno.nome_completo}
+                  <User className="size-4 text-primary" /> {aluno.nomeCompleto}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3">
                   {aluno.cpf && <span>CPF: {aluno.cpf}</span>}
@@ -578,8 +553,8 @@ function TurmaDetalhe() {
               </Link>
 
               <div className="flex items-center gap-2">
-                <Badge variant={aluno.user_id ? "default" : "secondary"}>
-                  {aluno.user_id ? "acesso ativo" : "sem acesso"}
+                <Badge variant={aluno.userId ? "default" : "secondary"}>
+                  {aluno.userId ? "acesso ativo" : "sem acesso"}
                 </Badge>
 
                 <Button asChild variant="outline" size="sm" className="h-8 text-xs">
@@ -634,7 +609,7 @@ function TurmaDetalhe() {
               <div className="h-full bg-primary" style={{ width: `${Math.min(percentual, 100)}%` }} />
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {percentual}% do valor contratado já foi recebido · {todasParcelas.filter((p) => p.status === "pago").length}
+              {percentual}% do valor contratado já foi recebido · {todasParcelas.filter((p) => p.status === "Pago").length}
               /{todasParcelas.length} parcelas quitadas
             </p>
           </div>
@@ -663,11 +638,11 @@ function TurmaDetalhe() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="curso">Curso *</Label>
-                  <Input id="curso" name="curso" defaultValue={turma.curso} required maxLength={120} />
+                  <Input id="curso" name="curso" defaultValue={turma.curso ?? ""} required maxLength={120} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="faculdade">Faculdade *</Label>
-                  <Input id="faculdade" name="faculdade" defaultValue={turma.faculdade} required maxLength={120} />
+                  <Input id="faculdade" name="faculdade" defaultValue={turma.faculdade ?? ""} required maxLength={120} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="cidade">Cidade</Label>
@@ -679,12 +654,12 @@ function TurmaDetalhe() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="previsao_formatura">Previsão de formatura</Label>
+                <Label htmlFor="previsaoFormatura">Previsão de formatura</Label>
                 <Input
-                  id="previsao_formatura"
-                  name="previsao_formatura"
+                  id="previsaoFormatura"
+                  name="previsaoFormatura"
                   type="date"
-                  defaultValue={turma.previsao_formatura || ""}
+                  defaultValue={turma.previsaoFormatura || ""}
                 />
               </div>
               <div className="space-y-1.5">
@@ -754,8 +729,8 @@ function TurmaDetalhe() {
                 <Label htmlFor="edit_nome_completo">Nome completo *</Label>
                 <Input
                   id="edit_nome_completo"
-                  name="nome_completo"
-                  defaultValue={editingAluno.nome_completo}
+                  name="nomeCompleto"
+                  defaultValue={editingAluno.nomeCompleto}
                   required
                   maxLength={120}
                 />
@@ -796,9 +771,9 @@ function TurmaDetalhe() {
                   <Label htmlFor="edit_data_nascimento">Data de Nascimento</Label>
                   <Input
                     id="edit_data_nascimento"
-                    name="data_nascimento"
+                    name="dataNascimento"
                     type="date"
-                    defaultValue={editingAluno.data_nascimento || ""}
+                    defaultValue={editingAluno.dataNascimento || ""}
                   />
                 </div>
               </div>
@@ -821,7 +796,7 @@ function TurmaDetalhe() {
           <AlertDialogHeader>
             <AlertDialogTitle className="text-destructive">Excluir Formando</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir o formando <strong>{deletingAluno?.nome_completo}</strong>?
+              Tem certeza que deseja excluir o formando <strong>{deletingAluno?.nomeCompleto}</strong>?
               Esta ação removerá o contrato, parcelas e login associados.
             </AlertDialogDescription>
           </AlertDialogHeader>

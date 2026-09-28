@@ -20,7 +20,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { parcelas as apiParcelas, contratos as apiContratos, despesas as apiDespesas } from "@/lib/recursos";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -129,12 +129,16 @@ function FinanceiroPage() {
   const { data: parcelasData, isLoading } = useQuery({
     queryKey: ["financeiro-parcelas"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("parcelas")
-        .select("*, contratos(id, pacote, forma_pagamento, alunos(id, nome_completo, whatsapp, cpf, turmas(id, nome)))")
-        .order("vencimento");
-      if (error) throw error;
-      return data;
+      /*  A API não aninha aluno/turma dentro da parcela: buscamos os
+          contratos (que já vêm com aluno e turma) e costuramos aqui.  */
+      const [lista, todosContratos] = await Promise.all([
+        apiParcelas.listar(),
+        apiContratos.listar(),
+      ]);
+      const porContrato = new Map(todosContratos.map((c) => [c.id, c]));
+      return lista
+        .map((p) => ({ ...p, contrato: porContrato.get(p.contratoId) ?? null }))
+        .sort((a, b) => a.vencimento.localeCompare(b.vencimento));
     },
   });
 
@@ -142,9 +146,8 @@ function FinanceiroPage() {
   const { data: despesasData } = useQuery({
     queryKey: ["despesas"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("despesas").select("*").order("vencimento");
-      if (error) throw error;
-      return data;
+      const lista = await apiDespesas.listar();
+      return [...lista].sort((a, b) => a.vencimento.localeCompare(b.vencimento));
     },
   });
 
@@ -157,22 +160,23 @@ function FinanceiroPage() {
 
     // Turmas parcelas
     parcelasTurmas.forEach((p) => {
-      const isPago = p.status === "pago";
+      const isPago = p.status === "Pago";
       const isAtrasado = !isPago && p.vencimento < hoje;
+      const aluno = p.contrato?.aluno ?? null;
       list.push({
         id: `turma-parc-${p.id}`,
         origem: "turma",
-        clienteNome: p.contratos?.alunos?.nome_completo ?? "Formando",
-        clienteContato: p.contratos?.alunos?.whatsapp ?? p.contratos?.alunos?.cpf ?? null,
-        tituloEvento: p.contratos?.alunos?.turmas?.nome ?? "Turma",
-        pacote: p.contratos?.pacote ?? "Pacote Formatura",
+        clienteNome: aluno?.nomeCompleto ?? "Formando",
+        clienteContato: aluno?.whatsapp ?? aluno?.cpf ?? null,
+        tituloEvento: aluno?.turma?.nome ?? "Turma",
+        pacote: p.contrato?.pacote ?? "Pacote Formatura",
         numeroParcela: p.numero,
         valor: Number(p.valor),
-        valorPago: Number(p.valor_pago),
+        valorPago: Number(p.valorPago),
         vencimento: p.vencimento,
-        dataPagamento: p.data_pagamento ?? null,
+        dataPagamento: p.dataPagamento ?? null,
         status: isPago ? "pago" : isAtrasado ? "atrasado" : "pendente",
-        linkUrl: p.contratos?.alunos?.id ? `/alunos/${p.contratos.alunos.id}` : "/turmas",
+        linkUrl: aluno?.id ? `/alunos/${aluno.id}` : "/turmas",
       });
     });
 
@@ -256,11 +260,11 @@ function FinanceiroPage() {
   const atrasadasTotal = listaUnificada.filter((p) => p.status === "atrasado");
   const totalInadimplencia = atrasadasTotal.reduce((s, p) => s + (p.valor - p.valorPago), 0);
 
-  const saidasPagas = despesas.filter((d) => d.status === "pago");
+  const saidasPagas = despesas.filter((d) => d.status === "Pago");
   const totalSaidas = saidasPagas.reduce((s, d) => s + Number(d.valor), 0);
   const saldoLiquido = totalEntradas - totalSaidas;
 
-  const saidasAtrasadas = despesas.filter((d) => d.status !== "pago" && d.vencimento < hoje);
+  const saidasAtrasadas = despesas.filter((d) => d.status !== "Pago" && d.vencimento < hoje);
 
   // Filtered parcelas list com Busca, Grupo, Mês, Ano e Status
   const parcelasFiltradas = useMemo(() => {
@@ -308,14 +312,13 @@ function FinanceiroPage() {
     mutationFn: async (form: FormData) => {
       const valor = Number(String(form.get("valor") ?? "0").replace(",", ".")) || 0;
       if (valor <= 0) throw new Error("Informe um valor válido.");
-      const { error } = await supabase.from("despesas").insert({
+      await apiDespesas.criar({
         descricao: String(form.get("descricao") ?? "").trim(),
         categoria: String(form.get("categoria") ?? "geral").trim() || "geral",
         valor,
         vencimento: String(form.get("vencimento") ?? hoje),
-        status: "pendente",
+        status: "Pendente",
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Despesa / Saída registrada com sucesso!");
@@ -327,15 +330,10 @@ function FinanceiroPage() {
 
   const baixarDespesa = useMutation({
     mutationFn: async ({ id, pago }: { id: string; pago: boolean }) => {
-      const { error } = await supabase
-        .from("despesas")
-        .update(
-          pago
-            ? { status: "pendente", data_pagamento: null }
-            : { status: "pago", data_pagamento: hoje }
-        )
-        .eq("id", id);
-      if (error) throw error;
+      /*  Endpoints dedicados em vez de UPDATE cru: a baixa carrega regra
+          (data, forma de pagamento) que agora vive no servidor.  */
+      if (pago) await apiDespesas.desfazer(id)
+      else await apiDespesas.baixar(id, { dataPagamento: hoje });
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["despesas"] }),
     onError: (error) => toast.error((error as Error).message),
@@ -346,16 +344,12 @@ function FinanceiroPage() {
     if (item.origem === "turma") {
       const realId = item.id.replace("turma-parc-", "");
       const isPago = item.status === "pago";
-      const { error } = await supabase
-        .from("parcelas")
-        .update(
-          isPago
-            ? { status: "pendente", valor_pago: 0, data_pagamento: null }
-            : { status: "pago", valor_pago: item.valor, data_pagamento: hoje }
-        )
-        .eq("id", realId);
-      if (error) {
-        toast.error("Erro ao atualizar parcela: " + error.message);
+      try {
+        if (isPago) await apiParcelas.desfazer(realId);
+        else await apiParcelas.baixar(realId, { valorPago: item.valor, dataPagamento: hoje });
+      }
+      catch (e) {
+        toast.error("Erro ao atualizar parcela: " + (e as Error).message);
         return;
       }
       toast.success("Status da parcela atualizado!");
@@ -844,7 +838,7 @@ function FinanceiroPage() {
                   <p className="text-xs text-muted-foreground py-8 text-center">Nenhuma saída registrada.</p>
                 )}
                 {despesas.map((d) => {
-                  const pago = d.status === "pago";
+                  const pago = d.status === "Pago";
                   const atrasada = !pago && d.vencimento < hoje;
                   return (
                     <div
@@ -855,7 +849,7 @@ function FinanceiroPage() {
                         <p className="font-semibold text-sm">{d.descricao}</p>
                         <p className="text-xs text-muted-foreground">
                           Categoria: <span className="uppercase font-mono">{d.categoria}</span> · Vencimento: {dataBR(d.vencimento)}
-                          {d.data_pagamento && ` · Pago em ${dataBR(d.data_pagamento)}`}
+                          {d.dataPagamento && ` · Pago em ${dataBR(d.dataPagamento)}`}
                         </p>
                       </div>
 

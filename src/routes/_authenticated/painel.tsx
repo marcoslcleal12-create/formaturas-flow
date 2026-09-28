@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Camera, ExternalLink, FileDown, Lock, Printer, Calendar, MapPin, Heart, PartyPopper, UserCheck } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { alunos as apiAlunos, contratos as apiContratos } from "@/lib/recursos";
 import { AppShell } from "@/components/app/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,25 +53,12 @@ function PainelAluno() {
     queryKey: ["meu-cadastro", user?.id, userDigits],
     enabled: !!user,
     queryFn: async () => {
-      // Tenta por user_id se for UUID
-      if (user?.id && user.id.includes("-")) {
-        const { data } = await supabase
-          .from("alunos")
-          .select("*, turmas(nome, curso, faculdade, semestre, previsao_formatura)")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        if (data) return data;
-      }
-      // Tenta por CPF (11 dígitos)
-      if (userDigits && userDigits.length === 11) {
-        const { data } = await supabase
-          .from("alunos")
-          .select("*, turmas(nome, curso, faculdade, semestre, previsao_formatura)")
-          .eq("cpf", userDigits)
-          .maybeSingle();
-        if (data) return data;
-      }
-      return null;
+      /*  `/alunos/me` já resolve quem é o formando a partir do token, por
+          UserId ou pelo CPF embutido no e-mail; o front não precisa mais
+          adivinhar por qual caminho procurar.  */
+      const meus = await apiAlunos.eu();
+      const lista = Array.isArray(meus) ? meus : meus ? [meus] : [];
+      return lista[0] ?? null;
     },
   });
 
@@ -80,13 +67,8 @@ function PainelAluno() {
     queryKey: ["meu-contrato", aluno?.id],
     enabled: !!aluno?.id,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("contratos")
-        .select("*, parcelas(*)")
-        .eq("aluno_id", aluno!.id)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
+      const lista = await apiContratos.listar({ alunoId: aluno!.id });
+      return lista[0] ?? null;
     },
   });
 
@@ -101,8 +83,8 @@ function PainelAluno() {
 
   // If aluno is found
   const parcelas = [...(contrato?.parcelas ?? [])].sort((a, b) => a.numero - b.numero);
-  const pago = parcelas.reduce((s, p) => s + Number(p.valor_pago), 0) + Number(contrato?.valor_entrada ?? 0);
-  const emAberto = parcelas.filter((p) => p.status !== "pago").reduce((s, p) => s + Number(p.valor), 0);
+  const pago = parcelas.reduce((s, p) => s + Number(p.valorPago), 0) + Number(contrato?.valorEntrada ?? 0);
+  const emAberto = parcelas.filter((p) => p.status !== "Pago").reduce((s, p) => s + Number(p.valor), 0);
 
   // If demanda is found
   const demandaParcelas = demandaCliente?.parcelas ?? [];
@@ -114,10 +96,10 @@ function PainelAluno() {
   const demandaEmAberto = Math.max(0, (demandaCliente?.valorTotal ?? 0) - (demandaCliente?.desconto ?? 0) - demandaPago);
 
   const primeiroNome =
-    (aluno?.nome_completo ?? demandaCliente?.cliente ?? user?.email ?? "").split(" ")[0];
+    (aluno?.nomeCompleto ?? demandaCliente?.cliente ?? user?.email ?? "").split(" ")[0];
 
   const temBoletosAtrasados = !!(
-    (aluno && contrato && parcelas.some((p) => p.status !== "pago" && p.vencimento < hoje)) ||
+    (aluno && contrato && parcelas.some((p) => p.status !== "Pago" && p.vencimento < hoje)) ||
     (demandaCliente && demandaParcelas.some((p) => p.status !== "pago" && p.vencimento < hoje))
   );
 
@@ -129,45 +111,46 @@ function PainelAluno() {
       }, 120000); // 2 minutos
       return () => clearInterval(interval);
     }
+    return undefined;
   }, [temBoletosAtrasados]);
 
   const handleBaixarPdf = () => {
     if (aluno && contrato) {
       gerarContratoPdf({
         aluno: {
-          nome_completo: aluno.nome_completo,
+          nomeCompleto: aluno.nomeCompleto,
           cpf: aluno.cpf,
           endereco: aluno.endereco ?? null,
           cidade: aluno.cidade ?? null,
           telefone: aluno.whatsapp ?? null,
           email: aluno.email ?? null,
-          turma_nome: aluno.turmas?.nome ?? null,
+          turmaNome: aluno.turma?.nome ?? null,
         },
         contrato: {
-          pacote: contrato.pacote,
-          valor_total: Number(contrato.valor_total),
+          pacote: contrato.pacote ?? "—",
+          valorTotal: Number(contrato.valorTotal),
           desconto: Number(contrato.desconto ?? 0),
-          valor_entrada: Number(contrato.valor_entrada ?? 0),
-          dia_vencimento: contrato.dia_vencimento ?? 10,
-          data_contrato: contrato.data_contrato ?? hoje,
-          forma_pagamento: contrato.forma_pagamento ?? "boleto",
-          autoriza_imagem: contrato.autoriza_imagem !== false,
+          valorEntrada: Number(contrato.valorEntrada ?? 0),
+          diaVencimento: contrato.diaVencimento ?? 10,
+          dataContrato: contrato.dataContrato ?? hoje,
+          formaPagamento: contrato.formaPagamento ?? "boleto",
+          autorizaImagem: contrato.autorizaImagem !== false,
         },
         parcelas: parcelas.map((p) => ({
           numero: p.numero,
           valor: Number(p.valor),
           vencimento: p.vencimento,
           status: p.status,
-          data_pagamento: p.data_pagamento,
-          forma_pagamento: p.forma_pagamento,
+          dataPagamento: p.dataPagamento,
+          formaPagamento: p.formaPagamento,
         })),
-        texto: contrato.texto_contrato ?? CLAUSULAS_PADRAO,
+        texto: contrato.textoContrato ?? CLAUSULAS_PADRAO,
       });
       toast.success("Download do contrato em PDF iniciado!");
     } else if (demandaCliente) {
       gerarContratoPdf({
         aluno: {
-          nome_completo: demandaCliente.cliente,
+          nomeCompleto: demandaCliente.cliente,
           cpf: formatarCpf(demandaCliente.cpf),
           endereco: demandaCliente.local,
           cidade: demandaCliente.local.split("-")[1]?.trim() || "São Paulo, SP",
@@ -176,21 +159,21 @@ function PainelAluno() {
         },
         contrato: {
           pacote: demandaCliente.pacote,
-          valor_total: demandaCliente.valorTotal,
+          valorTotal: demandaCliente.valorTotal,
           desconto: demandaCliente.desconto,
-          valor_entrada: demandaCliente.valorEntrada,
-          dia_vencimento: demandaCliente.diaVencimento,
-          data_contrato: demandaCliente.dataEvento,
-          forma_pagamento: demandaCliente.formaPagamento,
-          autoriza_imagem: true,
+          valorEntrada: demandaCliente.valorEntrada,
+          diaVencimento: demandaCliente.diaVencimento,
+          dataContrato: demandaCliente.dataEvento,
+          formaPagamento: demandaCliente.formaPagamento,
+          autorizaImagem: true,
         },
         parcelas: demandaCliente.parcelas.map((p) => ({
           numero: p.numero,
           vencimento: p.vencimento,
           valor: p.valor,
           status: p.status,
-          data_pagamento: p.dataPagamento ?? null,
-          forma_pagamento: demandaCliente.formaPagamento ?? null,
+          dataPagamento: p.dataPagamento ?? null,
+          formaPagamento: demandaCliente.formaPagamento ?? null,
         })),
         texto: CLAUSULAS_PADRAO,
       });
@@ -401,7 +384,7 @@ function PainelAluno() {
             </CardHeader>
             {showDados && (
               <CardContent className="space-y-1.5 text-sm">
-                <Info label="Nome Completo" value={aluno.nome_completo} />
+                <Info label="Nome Completo" value={aluno.nomeCompleto} />
                 <Info label="CPF (Login)" value={aluno.cpf} />
                 {aluno.rg && <Info label="RG" value={aluno.rg} />}
                 <Info label="Telefone" value={aluno.telefone || aluno.whatsapp} />
@@ -430,19 +413,19 @@ function PainelAluno() {
             </CardHeader>
             {showTurma && (
               <CardContent className="space-y-1.5 text-sm">
-                <Info label="Turma" value={aluno.turmas?.nome} />
-                <Info label="Curso" value={aluno.turmas?.curso} />
-                <Info label="Faculdade" value={aluno.turmas?.faculdade} />
-                <Info label="Semestre" value={aluno.turmas?.semestre} />
+                <Info label="Turma" value={aluno.turma?.nome} />
+                <Info label="Curso" value={aluno.turma?.curso} />
+                <Info label="Faculdade" value={aluno.turma?.faculdade} />
+                <Info label="Semestre" value={aluno.turma?.semestre} />
                 {contrato && (
                   <>
                     <Info
                       label="Uso de Imagem"
-                      value={contrato.autoriza_imagem !== false ? "Sim, autorizado para divulgação" : "Não autorizado"}
+                      value={contrato.autorizaImagem !== false ? "Sim, autorizado para divulgação" : "Não autorizado"}
                     />
                     <Info
                       label="Vencimento dos Boletos"
-                      value={`Todo dia ${contrato.dia_vencimento || 10}`}
+                      value={`Todo dia ${contrato.diaVencimento || 10}`}
                     />
                   </>
                 )}
@@ -464,13 +447,13 @@ function PainelAluno() {
               {contrato && (
                 <>
                   <div className="grid gap-2 sm:grid-cols-3">
-                    <Info label="Valor total" value={brl(Number(contrato.valor_total))} />
+                    <Info label="Valor total" value={brl(Number(contrato.valorTotal))} />
                     <Info label="Já pago" value={brl(pago)} />
                     <Info label="Em aberto" value={brl(emAberto)} />
                   </div>
                   <div className="space-y-2">
                     {parcelas.map((p) => {
-                      const quitada = p.status === "pago";
+                      const quitada = p.status === "Pago";
                       const atrasada = !quitada && p.vencimento < hoje;
                       return (
                         <div
@@ -497,11 +480,11 @@ function PainelAluno() {
                               <PagamentoDialog
                                 parcelaId={p.id}
                                 numero={p.numero}
-                                valor={Number(p.valor) - Number(p.valor_pago)}
+                                valor={Number(p.valor) - Number(p.valorPago)}
                                 vencimento={p.vencimento}
-                                clienteNome={aluno.nome_completo}
+                                clienteNome={aluno.nomeCompleto}
                                 clienteCpf={aluno.cpf}
-                                pacote={contrato.pacote}
+                                pacote={contrato.pacote ?? "—"}
                               />
                             )}
                           </div>
@@ -549,7 +532,7 @@ function PainelAluno() {
                           <p className="text-xs font-medium text-muted-foreground">PACOTE CONTRATADO</p>
                           <p className="text-sm font-semibold mt-0.5">{contrato.pacote}</p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Total: {brl(Number(contrato.valor_total))}
+                            Total: {brl(Number(contrato.valorTotal))}
                             {Number(contrato.desconto) > 0 && ` (Desconto: ${brl(Number(contrato.desconto))})`}
                           </p>
                         </div>
@@ -558,7 +541,7 @@ function PainelAluno() {
                             Termos e Cláusulas Contratuais
                           </p>
                           <div className="rounded-xl border border-border bg-card p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text text-foreground/90 shadow-inner">
-                            {contrato.texto_contrato || CLAUSULAS_PADRAO}
+                            {contrato.textoContrato || CLAUSULAS_PADRAO}
                           </div>
                         </div>
                       </div>
