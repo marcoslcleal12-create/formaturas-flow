@@ -20,7 +20,19 @@ export function AssinaturaPad({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const desenhando = useRef(false);
   const temTraco = useRef(false);
-  const [vazio, setVazio] = useState(true);
+
+  /*  `reportado` é o que o componente REALMENTE entregou ao pai, e é dele
+      que o rótulo vive.  Antes o rótulo vinha de um "tem traço" local e
+      podia dizer "registrada" sem o pai ter recebido nada — se o pointerup
+      se perdesse (troca de app, gesto do navegador, ligação no meio), a
+      pessoa lia "registrada" e o botão de finalizar seguia travado, sem
+      pista do motivo.  */
+  const [reportado, setReportado] = useState(false);
+
+  /*  Separado de `reportado` de propósito: o placeholder tem de sumir no
+      primeiro traço, senão fica escrito "Assine aqui" por cima da rubrica;
+      o rótulo, esse sim, só pode falar depois do reporte.  */
+  const [desenhou, setDesenhou] = useState(false);
 
   /*  O canvas é dimensionado na densidade real da tela; sem isso a
       assinatura sai serrilhada justamente no celular, que é onde ela é
@@ -65,7 +77,14 @@ export function AssinaturaPad({
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
 
-    e.currentTarget.setPointerCapture(e.pointerId);
+    /*  Alguns navegadores lançam se o ponteiro já não existe mais; a
+        captura é otimização, não requisito para desenhar.  */
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /*  Segue sem captura: o traço ainda funciona dentro da área.  */
+    }
+
     desenhando.current = true;
 
     const { x, y } = ponto(e);
@@ -78,7 +97,7 @@ export function AssinaturaPad({
     ctx.stroke();
 
     temTraco.current = true;
-    setVazio(false);
+    setDesenhou(true);
   };
 
   const mover = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -91,13 +110,22 @@ export function AssinaturaPad({
     ctx.stroke();
   };
 
+  const reportar = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !temTraco.current) return;
+    onChange(canvas.toDataURL("image/png"));
+    setReportado(true);
+  };
+
   const encerrar = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!desenhando.current) return;
     desenhando.current = false;
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
-
-    const canvas = canvasRef.current;
-    if (canvas && temTraco.current) onChange(canvas.toDataURL("image/png"));
+    try {
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    } catch {
+      /*  Captura já perdida: seguir para o reporte é o que importa.  */
+    }
+    reportar();
   };
 
   const limpar = () => {
@@ -107,7 +135,8 @@ export function AssinaturaPad({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     temTraco.current = false;
-    setVazio(true);
+    setReportado(false);
+    setDesenhou(false);
     onChange(null);
   };
 
@@ -122,10 +151,11 @@ export function AssinaturaPad({
           onPointerMove={mover}
           onPointerUp={encerrar}
           onPointerCancel={encerrar}
+          onLostPointerCapture={() => { if (desenhando.current) { desenhando.current = false; reportar(); } }}
           aria-label="Área de assinatura"
         />
 
-        {vazio && (
+        {!desenhou && (
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 text-muted-foreground">
             <PenLine className="size-5" />
             <span className="text-xs">Assine aqui com o dedo ou o mouse</span>
@@ -134,19 +164,19 @@ export function AssinaturaPad({
 
         {/*  A linha de base dá ao campo a cara de onde se assina, e some
              junto com o placeholder para não sujar a imagem gerada.  */}
-        {vazio && <div className="pointer-events-none absolute left-8 right-8 bottom-9 border-b border-muted-foreground/30" />}
+        {!desenhou && <div className="pointer-events-none absolute left-8 right-8 bottom-9 border-b border-muted-foreground/30" />}
       </div>
 
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">
-          {vazio ? "Nenhuma assinatura" : "Assinatura registrada"}
+          {reportado ? "Assinatura registrada" : "Nenhuma assinatura"}
         </span>
         <Button
           type="button"
           variant="ghost"
           size="sm"
           onClick={limpar}
-          disabled={disabled || vazio}
+          disabled={disabled || !desenhou}
           className="gap-1.5 h-8"
         >
           <Eraser className="size-3.5" /> Limpar
