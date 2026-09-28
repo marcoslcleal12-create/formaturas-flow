@@ -1,30 +1,18 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { supabase } from "@/integrations/supabase/client";
-import { getClienteSession } from "@/lib/aluno-login";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
+import { lerSessao } from "@/lib/api"
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
-  beforeLoad: async () => {
-    // 1. Verifica sessão do Supabase (Equipe, Admin ou Formando registrado no Supabase Auth)
-    const { data } = await supabase.auth.getUser();
-    if (data?.user) {
-      return { user: data.user };
-    }
+  beforeLoad: () => {
+    const sessao = lerSessao()
 
-    // 2. Verifica sessão do cliente logado via CPF (Formando ou Demanda)
-    const clientSession = getClienteSession();
-    if (clientSession?.cpf) {
-      return {
-        user: {
-          id: clientSession.cpf,
-          email: clientSession.email,
-          user_metadata: { full_name: clientSession.nome },
-        } as any,
-      };
-    }
+    /*  O guard só confere se HÁ sessão; se o token estiver vencido, quem
+        descobre é a primeira chamada à API, que tenta renovar e, falhando,
+        limpa a sessão.  Validar expiração aqui duplicaria essa regra em
+        dois lugares que inevitavelmente divergiriam.  */
+    if (!sessao) throw redirect({ to: "/auth" })
 
-    // Se nenhuma sessão for encontrada, redireciona para login
-    throw redirect({ to: "/auth" });
+    return { sessao }
   },
   component: () => <Outlet />,
-});
+})

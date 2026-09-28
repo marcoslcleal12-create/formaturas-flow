@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Plus, Edit, Trash2, MoreVertical, GraduationCap, Building2, MapPin, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { turmas as apiTurmas, alunos as apiAlunos } from "@/lib/recursos";
+import type { Turma } from "@/lib/entidades";
 import { AppShell } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,21 +62,13 @@ const turmaSchema = z.object({
   faculdade: z.string().trim().min(2, "Informe a faculdade").max(120),
   cidade: z.string().trim().max(120).optional(),
   semestre: z.string().trim().max(20).optional(),
-  previsao_formatura: z.string().trim().max(10).optional(),
+  previsaoFormatura: z.string().trim().max(10).optional(),
   status: z.string().optional(),
 });
 
-interface TurmaData {
-  id: string;
-  nome: string;
-  curso: string;
-  faculdade: string;
-  cidade: string | null;
-  semestre: string | null;
-  previsao_formatura: string | null;
-  status: string;
-  alunos?: { count: number }[];
-}
+/*  A turma vem da API; aqui só acrescentamos a contagem de alunos, que o
+    endpoint não agrega.  */
+type TurmaData = Turma & { totalAlunos: number };
 
 function TurmasPage() {
   const queryClient = useQueryClient();
@@ -86,12 +79,13 @@ function TurmasPage() {
   const { data: turmas = [], isLoading } = useQuery({
     queryKey: ["turmas"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("turmas")
-        .select("*, alunos(count)")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as TurmaData[];
+      /*  A API devolve turma e aluno separados; a contagem é feita aqui em
+          vez de pedir um agregado que o endpoint não expõe.  */
+      const [lista, todosAlunos] = await Promise.all([apiTurmas.listar(), apiAlunos.listar()]);
+      return lista.map((t) => ({
+        ...t,
+        totalAlunos: todosAlunos.filter((a) => a.turmaId === t.id).length,
+      }));
     },
   });
 
@@ -103,18 +97,17 @@ function TurmasPage() {
         faculdade: form.get("faculdade"),
         cidade: form.get("cidade") || undefined,
         semestre: form.get("semestre") || undefined,
-        previsao_formatura: form.get("previsao_formatura") || undefined,
+        previsaoFormatura: form.get("previsaoFormatura") || undefined,
       });
-      const { error } = await supabase.from("turmas").insert({
+      await apiTurmas.criar({
         nome: parsed.nome,
         curso: parsed.curso,
         faculdade: parsed.faculdade,
         cidade: parsed.cidade ?? null,
         semestre: parsed.semestre ?? null,
-        previsao_formatura: parsed.previsao_formatura || null,
-        status: "ativa",
+        previsaoFormatura: parsed.previsaoFormatura || null,
+        status: "EmAndamento",
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Turma criada com sucesso!");
@@ -134,22 +127,18 @@ function TurmasPage() {
         faculdade: form.get("faculdade"),
         cidade: form.get("cidade") || undefined,
         semestre: form.get("semestre") || undefined,
-        previsao_formatura: form.get("previsao_formatura") || undefined,
+        previsaoFormatura: form.get("previsaoFormatura") || undefined,
         status: form.get("status") || "ativa",
       });
-      const { error } = await supabase
-        .from("turmas")
-        .update({
-          nome: parsed.nome,
-          curso: parsed.curso,
-          faculdade: parsed.faculdade,
-          cidade: parsed.cidade ?? null,
-          semestre: parsed.semestre ?? null,
-          previsao_formatura: parsed.previsao_formatura || null,
-          status: parsed.status ?? "ativa",
-        })
-        .eq("id", editingTurma.id);
-      if (error) throw error;
+      await apiTurmas.atualizar(editingTurma.id, {
+        nome: parsed.nome,
+        curso: parsed.curso,
+        faculdade: parsed.faculdade,
+        cidade: parsed.cidade ?? null,
+        semestre: parsed.semestre ?? null,
+        previsaoFormatura: parsed.previsaoFormatura || null,
+        status: (parsed.status as Turma["status"]) || "EmAndamento",
+      });
     },
     onSuccess: () => {
       toast.success("Turma atualizada com sucesso!");
@@ -162,8 +151,7 @@ function TurmasPage() {
 
   const deleteTurma = useMutation({
     mutationFn: async (turmaId: string) => {
-      const { error } = await supabase.from("turmas").delete().eq("id", turmaId);
-      if (error) throw error;
+      await apiTurmas.remover(turmaId);
     },
     onSuccess: () => {
       toast.success("Turma excluída com sucesso.");
@@ -232,7 +220,7 @@ function TurmasPage() {
                 </Link>
 
                 <div className="flex items-center gap-2">
-                  <Badge variant={turma.status === "ativa" ? "default" : "secondary"}>
+                  <Badge variant={turma.status === "EmAndamento" ? "default" : "secondary"}>
                     {turma.status}
                   </Badge>
 
@@ -266,7 +254,7 @@ function TurmasPage() {
                 </p>
                 <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t">
                   <span className="flex items-center gap-1">
-                    <GraduationCap className="size-3.5 text-gold" /> {turma.alunos?.[0]?.count ?? 0} formandos
+                    <GraduationCap className="size-3.5 text-gold" /> {turma.totalAlunos} formandos
                   </span>
                   <span className="flex items-center gap-1">
                     <MapPin className="size-3.5 text-muted-foreground" /> {turma.cidade ?? "Sem local definido"}
@@ -311,13 +299,13 @@ function TurmasPage() {
                 <Field
                   name="curso"
                   label="Curso *"
-                  defaultValue={editingTurma.curso}
+                  defaultValue={editingTurma.curso ?? ""}
                   required
                 />
                 <Field
                   name="faculdade"
                   label="Faculdade *"
-                  defaultValue={editingTurma.faculdade}
+                  defaultValue={editingTurma.faculdade ?? ""}
                   required
                 />
                 <Field
@@ -332,10 +320,10 @@ function TurmasPage() {
                 />
               </div>
               <Field
-                name="previsao_formatura"
+                name="previsaoFormatura"
                 label="Previsão de formatura"
                 type="date"
-                defaultValue={editingTurma.previsao_formatura || ""}
+                defaultValue={editingTurma.previsaoFormatura || ""}
               />
               <div className="space-y-1.5">
                 <Label htmlFor="status">Status da Turma</Label>

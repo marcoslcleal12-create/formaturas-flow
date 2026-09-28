@@ -1,102 +1,43 @@
-import { useEffect, useState } from "react";
-import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import { getClienteSession } from "@/lib/aluno-login";
+import { useEffect, useState } from "react"
+import { lerSessao, observarSessao, type AppRole, type Sessao } from "@/lib/api"
 
-export type AppRole = "super_admin" | "funcionario" | "aluno";
+export type { AppRole }
 
+/*  Sessão vinda da API .NET.
+
+    Antes havia dois mundos convivendo: a sessão do Supabase Auth para a
+    equipe e uma "sessão de cliente" inventada no localStorage para o
+    formando que logava por CPF.  Agora é um só — a API emite JWT para os
+    dois, e o papel vem dentro do token.  */
 export function useAuth() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [roles, setRoles] = useState<AppRole[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [sessao, setSessao] = useState<Sessao | null>(() => lerSessao())
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    let active = true;
+    /*  Primeira leitura só acontece aqui porque no SSR não existe
+        localStorage; ler no useState inicial devolveria null no servidor e
+        piscaria a tela de login no cliente.  */
+    setSessao(lerSessao())
+    setLoading(false)
 
-    const loadRoles = async (uid: string | undefined) => {
-      if (!uid) {
-        if (active) setRoles([]);
-        return;
-      }
-      try {
-        const { data } = await supabase.from("user_roles").select("role").eq("user_id", uid);
-        if (active) setRoles((data ?? []).map((r) => r.role as AppRole));
-      } catch (e) {
-        if (active) setRoles([]);
-      }
-    };
+    /*  `observarSessao` devolve o resultado de Set.delete (boolean); o
+        cleanup do efeito precisa devolver void.  */
+    const parar = observarSessao(setSessao)
+    return () => { parar() }
+  }, [])
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      if (data.session?.user) {
-        setSession(data.session);
-        setUser(data.session.user);
-        void loadRoles(data.session.user.id).finally(() => {
-          if (active) setLoading(false);
-        });
-      } else {
-        // Verifica sessão de cliente por CPF
-        const clientSession = getClienteSession();
-        if (clientSession?.cpf) {
-          const fakeUser = {
-            id: clientSession.cpf,
-            email: clientSession.email,
-            user_metadata: { full_name: clientSession.nome },
-            app_metadata: {},
-            aud: "authenticated",
-            created_at: new Date().toISOString(),
-          } as User;
-          setUser(fakeUser);
-          setRoles(["aluno"]);
-        } else {
-          setUser(null);
-          setRoles([]);
-        }
-        if (active) setLoading(false);
-      }
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-      if (s?.user) {
-        setUser(s.user);
-        void loadRoles(s.user.id);
-      } else {
-        const clientSession = getClienteSession();
-        if (clientSession?.cpf) {
-          const fakeUser = {
-            id: clientSession.cpf,
-            email: clientSession.email,
-            user_metadata: { full_name: clientSession.nome },
-            app_metadata: {},
-            aud: "authenticated",
-            created_at: new Date().toISOString(),
-          } as User;
-          setUser(fakeUser);
-          setRoles(["aluno"]);
-        } else {
-          setUser(null);
-          setRoles([]);
-        }
-      }
-    });
-
-    return () => {
-      active = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  const isStaff = roles.includes("super_admin") || roles.includes("funcionario");
+  const roles = sessao?.roles ?? []
+  const isStaff = roles.includes("super_admin") || roles.includes("funcionario")
 
   return {
-    session,
-    user,
+    sessao,
+    user: sessao
+      ? { id: sessao.email, email: sessao.email, nomeCompleto: sessao.nomeCompleto }
+      : null,
     roles,
     loading,
     isStaff,
     isSuperAdmin: roles.includes("super_admin"),
-    isAluno: !isStaff,
-  };
+    isAluno: !!sessao && !isStaff,
+  }
 }

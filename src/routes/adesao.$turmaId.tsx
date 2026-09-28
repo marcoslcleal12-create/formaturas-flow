@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { 
   User, 
   Package, 
@@ -19,7 +18,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
 import { brl } from "@/components/app/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,9 +38,11 @@ import {
   DIAS_VENCIMENTO, 
   type PacoteItem 
 } from "@/lib/turma-pacotes";
-import { apenasDigitos, saveClienteSession } from "@/lib/aluno-login";
+import { apenasDigitos, cpfParaEmail } from "@/lib/aluno-login";
+import { auth } from "@/lib/api";
+import { publico } from "@/lib/recursos";
+import { AssinaturaPad } from "@/components/app/AssinaturaPad";
 import { CLAUSULAS_PADRAO, EMPRESA } from "@/lib/contrato-modelo";
-import { realizarAdesaoPublica, buscarTurmaPublica } from "@/lib/alunos.functions";
 
 
 export const Route = createFileRoute("/adesao/$turmaId")({
@@ -54,7 +54,7 @@ export const Route = createFileRoute("/adesao/$turmaId")({
   }),
   loader: async ({ params }) => {
     try {
-      const turma = await buscarTurmaPublica({ data: params.turmaId });
+      const turma = await publico.turma(params.turmaId);
       return { turma };
     } catch {
       return { turma: null };
@@ -81,7 +81,6 @@ function AdesaoTurmaPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const realizarAdesao = useServerFn(realizarAdesaoPublica);
 
   // Etapa atual: 1 (Dados), 2 (Pacote e Parcelamento), 3 (Uso de Imagem), 4 (Contrato e Aceite)
   const [etapa, setEtapa] = useState<1 | 2 | 3 | 4>(1);
@@ -109,14 +108,13 @@ function AdesaoTurmaPage() {
 
   // Estado Etapa 4 - Aceite de Contrato
   const [aceitouContrato, setAceitouContrato] = useState(false);
-
-  const buscarTurma = useServerFn(buscarTurmaPublica);
+  const [assinatura, setAssinatura] = useState<string | null>(null);
 
   // Carrega dados da turma
   const { data: turma, isLoading, error } = useQuery({
     queryKey: ["turma-adesao", turmaId],
     queryFn: async () => {
-      const data = await buscarTurma({ data: turmaId });
+      const data = await publico.turma(turmaId);
       if (!data) throw new Error("Turma não encontrada");
       return data;
     },
@@ -140,6 +138,7 @@ function AdesaoTurmaPage() {
       if (!pacoteSelecionado) throw new Error("Selecione um pacote");
       if (!autorizaImagem) throw new Error("Responda à autorização de uso de imagem");
       if (!aceitouContrato) throw new Error("Você precisa aceitar os termos do contrato");
+      if (!assinatura) throw new Error("Assine o contrato no campo indicado para finalizar");
 
       const cpfLimpo = apenasDigitos(dadosPessoais.cpf);
       if (cpfLimpo.length !== 11) throw new Error("CPF deve ter 11 dígitos");
@@ -171,39 +170,28 @@ AUTORIZAÇÃO DE USO DE IMAGEM:
 ${autorizaImagem === "sim" ? "AUTORIZADO pelo CONTRATANTE" : "NÃO AUTORIZADO pelo CONTRATANTE"}
 
 CLÁUSULAS GERAIS:
-${CLAUSULAS_PADRAO}
+${CLAUSULAS_PADRAO}`;
 
-Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR")}.`;
-
-      const res = await realizarAdesao({
-        data: {
-          turmaId: turma.id,
-          dadosPessoais: {
-            ...dadosPessoais,
-            cpf: cpfLimpo,
-          },
-          pacote: pacoteSelecionado.nome,
-          valorTotal: pacoteSelecionado.investimento,
-          numParcelas,
-          diaVencimento,
-          autorizaImagem: autorizaImagem === "sim",
-          textoContratoCompleto,
-          parcelas: parcelasCalculadas.map((p) => ({
-            numero: p.numero,
-            valor: p.valor,
-            vencimento: p.vencimento,
-          })),
-        },
+      const res = await publico.adesao({
+        turmaId: turma.id,
+        dadosPessoais: { ...dadosPessoais, cpf: cpfLimpo },
+        pacote: pacoteSelecionado.nome,
+        valorTotal: pacoteSelecionado.investimento,
+        numParcelas,
+        diaVencimento,
+        autorizaImagem: autorizaImagem === "sim",
+        textoContratoCompleto,
+        parcelas: parcelasCalculadas.map((p) => ({
+          numero: p.numero,
+          valor: p.valor,
+          vencimento: p.vencimento,
+        })),
+        assinaturaImagem: assinatura,
       });
 
-      // Salva sessão local para autenticação imediata
-      saveClienteSession({
-        cpf: res.cpf,
-        nome: res.nome,
-        tipo: "aluno",
-        email: res.email,
-        alunoId: res.alunoId,
-      });
+      /*  A adesão já criou o acesso na API; logar aqui evita pedir ao
+          formando que digite o CPF de novo na tela seguinte.  */
+      await auth.login(cpfParaEmail(res.cpf), res.cpf);
 
       return res;
     },
@@ -775,9 +763,25 @@ Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às
                 </div>
               </div>
 
-              {/* Checkbox de Aceite dos Termos */}
-              <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 space-y-3">
-                <label className="flex items-start gap-3 cursor-pointer">
+              {/* Assinatura do contratante */}
+              <div className="p-4 sm:p-5 rounded-xl bg-primary/5 border border-primary/20 space-y-4">
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-foreground">Assinatura do contratante</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Assine no campo abaixo. Registramos a data, o horário, seu dispositivo e uma
+                    impressão digital do texto acima, de modo que o contrato não possa ser alterado
+                    depois de assinado.
+                  </p>
+                </div>
+
+                <AssinaturaPad onChange={setAssinatura} disabled={finalizarAdesao.isPending} />
+
+                <div className="rounded-lg bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">{dadosPessoais.nome_completo || "—"}</span>
+                  {dadosPessoais.cpf ? ` · CPF ${dadosPessoais.cpf}` : ""}
+                </div>
+
+                <label className="flex items-start gap-3 cursor-pointer border-t border-primary/15 pt-3">
                   <input
                     type="checkbox"
                     id="aceite-contrato"
@@ -790,7 +794,7 @@ Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às
                       Li e aceito todos os termos e condições deste contrato
                     </span>
                     <span className="text-xs text-muted-foreground block">
-                      Ao clicar no botão abaixo, sua adesão será confirmada e seu login será liberado utilizando seu CPF.
+                      Ao finalizar, sua adesão será confirmada e seu acesso liberado com o CPF.
                     </span>
                   </div>
                 </label>
@@ -802,11 +806,11 @@ Contrato aceito eletronicamente em ${new Date().toLocaleDateString("pt-BR")} às
                 </Button>
                 <Button
                   onClick={() => finalizarAdesao.mutate()}
-                  disabled={!aceitouContrato || finalizarAdesao.isPending}
+                  disabled={!aceitouContrato || !assinatura || finalizarAdesao.isPending}
                   className="gap-2 px-6 bg-primary text-primary-foreground font-bold shadow-md hover:bg-primary/90"
                 >
                   <ShieldCheck className="size-4" />
-                  {finalizarAdesao.isPending ? "Criando seu acesso..." : "Aceitar Contrato e Acessar Minha Área"}
+                  {finalizarAdesao.isPending ? "Criando seu acesso..." : "Assinar Contrato e Acessar Minha Área"}
                 </Button>
               </div>
             </CardContent>

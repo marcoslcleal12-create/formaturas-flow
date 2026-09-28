@@ -16,7 +16,7 @@ import {
   FolderKanban,
   Users,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { turmas as apiTurmas, alunos as apiAlunos, contratos as apiContratos } from "@/lib/recursos";
 import { AppShell, brl } from "@/components/app/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,9 +28,17 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
       { title: "Visão Geral Consolidada | JM Formaturas & Eventos" },
-      { name: "description", content: "Painel de gestão com estatísticas consolidadas de turmas, casamentos, aniversários e ensaios." },
+      {
+        name: "description",
+        content:
+          "Painel de gestão com estatísticas consolidadas de turmas, casamentos, aniversários e ensaios.",
+      },
       { property: "og:title", content: "Visão Geral Consolidada | JM Formaturas & Eventos" },
-      { property: "og:description", content: "Acompanhe entradas, saldo a receber, inadimplência e desempenho por grupo de demandas." },
+      {
+        property: "og:description",
+        content:
+          "Acompanhe entradas, saldo a receber, inadimplência e desempenho por grupo de demandas.",
+      },
     ],
   }),
   component: DashboardPage,
@@ -50,14 +58,11 @@ export function DashboardPage() {
     queryKey: ["dashboard-full-data"],
     queryFn: async () => {
       const [turmas, alunos, contratos] = await Promise.all([
-        supabase.from("turmas").select("*, alunos(count)").order("created_at", { ascending: false }),
-        supabase.from("alunos").select("id, turma_id, nome_completo, status"),
-        supabase.from("contratos").select("*, parcelas(*), alunos(id, nome_completo, turmas(nome))"),
+        apiTurmas.listar(),
+        apiAlunos.listar(),
+        apiContratos.listar(),
       ]);
-      if (turmas.error) throw turmas.error;
-      if (alunos.error) throw alunos.error;
-      if (contratos.error) throw contratos.error;
-      return { turmas: turmas.data, alunos: alunos.data, contratos: contratos.data };
+      return { turmas, alunos, contratos };
     },
   });
 
@@ -68,16 +73,16 @@ export function DashboardPage() {
 
   // --- 1. MÉTRICAS FINANCEIRAS: TURMAS ---
   const turmasContratado = contratos.reduce(
-    (s, c) => s + Number(c.valor_total) - Number(c.desconto),
-    0
+    (s, c) => s + Number(c.valorTotal) - Number(c.desconto),
+    0,
   );
-  const turmasEntradas = contratos.reduce((s, c) => s + Number(c.valor_entrada), 0);
-  const turmasRecebidoParcelas = todasParcelasTurmas.reduce((s, p) => s + Number(p.valor_pago), 0);
+  const turmasEntradas = contratos.reduce((s, c) => s + Number(c.valorEntrada), 0);
+  const turmasRecebidoParcelas = todasParcelasTurmas.reduce((s, p) => s + Number(p.valorPago), 0);
   const turmasRecebidoTotal = turmasEntradas + turmasRecebidoParcelas;
   const turmasFaltaReceber = Math.max(0, turmasContratado - turmasRecebidoTotal);
   const turmasAtrasadas = todasParcelasTurmas
-    .filter((p) => p.status !== "pago" && p.vencimento < hoje)
-    .reduce((s, p) => s + (Number(p.valor) - Number(p.valor_pago)), 0);
+    .filter((p) => p.status !== "Pago" && p.vencimento < hoje)
+    .reduce((s, p) => s + (Number(p.valor) - Number(p.valorPago)), 0);
 
   // --- 2. MÉTRICAS FINANCEIRAS: CASAMENTOS ---
   const casamentos = demandas.filter((d) => d.tipo === "casamento");
@@ -125,10 +130,13 @@ export function DashboardPage() {
   }, 0);
 
   // --- TOTAL GERAL CONSOLIDADO ---
-  const totalGeralContratado = turmasContratado + casamentosContratado + festasContratado + ensaiosContratado;
-  const totalGeralRecebido = turmasRecebidoTotal + casamentosRecebido + festasRecebido + ensaiosRecebido;
+  const totalGeralContratado =
+    turmasContratado + casamentosContratado + festasContratado + ensaiosContratado;
+  const totalGeralRecebido =
+    turmasRecebidoTotal + casamentosRecebido + festasRecebido + ensaiosRecebido;
   const totalGeralFaltaReceber = turmasFaltaReceber + casamentosFalta + festasFalta + ensaiosFalta;
-  const totalGeralAtrasado = turmasAtrasadas + casamentosAtrasadas + festasAtrasadas + ensaiosAtrasadas;
+  const totalGeralAtrasado =
+    turmasAtrasadas + casamentosAtrasadas + festasAtrasadas + ensaiosAtrasadas;
   const percentualGeralRecebido =
     totalGeralContratado > 0 ? Math.round((totalGeralRecebido / totalGeralContratado) * 100) : 0;
 
@@ -140,9 +148,12 @@ export function DashboardPage() {
         {/* Cabeçalho */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Visão Geral Consolidada</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Acompanhamento financeiro e operacional unificado: Turmas, Casamentos, Aniversários e Ensaios.
+            <h1 className="font-display text-3xl font-semibold tracking-tight">
+              Visão Geral Consolidada
+            </h1>
+            <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              Acompanhamento financeiro e operacional unificado: Turmas, Casamentos, Aniversários e
+              Ensaios.
             </p>
           </div>
 
@@ -158,14 +169,16 @@ export function DashboardPage() {
           <Card className="shadow-sm border-border/80">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                   Total Contratado
                 </span>
-                <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <span className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">
                   <TrendingUp className="size-4" />
                 </span>
               </div>
-              <p className="mt-2 text-2xl font-bold text-foreground">{brl(totalGeralContratado)}</p>
+              <p className="figure mt-3 whitespace-nowrap text-xl font-medium text-foreground">
+                {brl(totalGeralContratado)}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
                 <FolderKanban className="size-3" /> {totalEventosCount} contratos & demandas ativas
               </p>
@@ -175,24 +188,33 @@ export function DashboardPage() {
           <Card className="shadow-sm border-border/80">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-success">
                   Total Recebido (Entradas)
                 </span>
-                <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
+                <span className="flex size-8 items-center justify-center rounded-md bg-success/12 text-success">
                   <CheckCircle2 className="size-4" />
                 </span>
               </div>
-              <p className="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+              <p className="figure mt-3 whitespace-nowrap text-xl font-medium text-success">
                 {brl(totalGeralRecebido)}
               </p>
               <div className="mt-2 space-y-1">
                 <div className="flex justify-between text-[11px] text-muted-foreground">
                   <span>Progresso de recebimento</span>
-                  <span className="font-semibold">{percentualGeralRecebido}%</span>
+                  <span className="figure font-medium text-foreground">
+                    {percentualGeralRecebido}%
+                  </span>
                 </div>
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                  role="progressbar"
+                  aria-valuenow={percentualGeralRecebido}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Progresso de recebimento consolidado"
+                >
                   <div
-                    className="h-full bg-emerald-500 transition-all duration-500"
+                    className="h-full bg-success transition-[width] duration-(--dur-3) ease-(--ease-doc)"
                     style={{ width: `${Math.min(percentualGeralRecebido, 100)}%` }}
                   />
                 </div>
@@ -203,14 +225,14 @@ export function DashboardPage() {
           <Card className="shadow-sm border-border/80">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-warning">
                   Quanto Falta Receber
                 </span>
-                <span className="flex size-8 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
+                <span className="flex size-8 items-center justify-center rounded-md bg-warning/12 text-warning">
                   <Clock className="size-4" />
                 </span>
               </div>
-              <p className="mt-2 text-2xl font-bold text-amber-600 dark:text-amber-400">
+              <p className="figure mt-3 whitespace-nowrap text-xl font-medium text-warning">
                 {brl(totalGeralFaltaReceber)}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -222,16 +244,20 @@ export function DashboardPage() {
           <Card className="shadow-sm border-border/80">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-destructive">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-destructive">
                   Total em Atraso
                 </span>
-                <span className="flex size-8 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                <span className="flex size-8 items-center justify-center rounded-md bg-destructive/10 text-destructive">
                   <AlertCircle className="size-4" />
                 </span>
               </div>
-              <p className="mt-2 text-2xl font-bold text-destructive">{brl(totalGeralAtrasado)}</p>
+              <p className="figure mt-3 whitespace-nowrap text-xl font-medium text-destructive">
+                {brl(totalGeralAtrasado)}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {totalGeralAtrasado > 0 ? "Requer cobrança e acompanhamento" : "Nenhuma parcela em atraso 🎉"}
+                {totalGeralAtrasado > 0
+                  ? "Requer cobrança e acompanhamento"
+                  : "Nenhuma parcela em atraso 🎉"}
               </p>
             </CardContent>
           </Card>
@@ -240,10 +266,13 @@ export function DashboardPage() {
         {/* ESTATÍSTICAS DETALHADAS POR GRUPOS DE DEMANDAS */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
-              <FolderKanban className="size-5 text-gold" /> Desempenho Financeiro por Grupos de Demanda
+            <h2 className="flex items-center gap-2.5 font-display text-xl font-semibold tracking-tight">
+              <FolderKanban className="size-5 text-gold-ink" /> Desempenho Financeiro por Grupos de
+              Demanda
             </h2>
-            <span className="text-xs text-muted-foreground">Dados em tempo real</span>
+            <span className="text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
+              Dados em tempo real
+            </span>
           </div>
 
           <div className="grid gap-5 md:grid-cols-2">
@@ -252,8 +281,8 @@ export function DashboardPage() {
               title="TURMAS DE FORMATURA"
               subtitle={`${turmas.length} turmas cadastradas · ${alunos.length} formandos`}
               icon={GraduationCap}
-              colorClass="border-l-4 border-l-primary"
-              badgeBg="bg-primary/10 text-primary"
+              ruleColor="var(--turma)"
+              badgeBg="bg-turma-surface text-turma"
               linkTo="/turmas"
               contratado={turmasContratado}
               recebido={turmasRecebidoTotal}
@@ -266,8 +295,8 @@ export function DashboardPage() {
               title="CASAMENTOS"
               subtitle={`${casamentos.length} casamentos registrados`}
               icon={Heart}
-              colorClass="border-l-4 border-l-pink-500"
-              badgeBg="bg-pink-100 text-pink-700 dark:bg-pink-950/50 dark:text-pink-400"
+              ruleColor="var(--casamento)"
+              badgeBg="bg-casamento-surface text-casamento"
               linkTo="/demandas/casamento"
               contratado={casamentosContratado}
               recebido={casamentosRecebido}
@@ -280,8 +309,8 @@ export function DashboardPage() {
               title="FESTAS DE ANIVERSÁRIO & 15 ANOS"
               subtitle={`${festas.length} eventos e aniversários cadastrados`}
               icon={PartyPopper}
-              colorClass="border-l-4 border-l-purple-500"
-              badgeBg="bg-purple-100 text-purple-700 dark:bg-purple-950/50 dark:text-purple-400"
+              ruleColor="var(--festa)"
+              badgeBg="bg-festa-surface text-festa"
               linkTo="/demandas/festa-aniversario"
               contratado={festasContratado}
               recebido={festasRecebido}
@@ -294,8 +323,8 @@ export function DashboardPage() {
               title="ENSAIOS FOTOGRÁFICOS"
               subtitle={`${ensaios.length} ensaios fotográficos cadastrados`}
               icon={Camera}
-              colorClass="border-l-4 border-l-blue-500"
-              badgeBg="bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
+              ruleColor="var(--ensaio)"
+              badgeBg="bg-ensaio-surface text-ensaio"
               linkTo="/demandas/ensaio"
               contratado={ensaiosContratado}
               recebido={ensaiosRecebido}
@@ -312,7 +341,7 @@ export function DashboardPage() {
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <GraduationCap className="size-4 text-primary" /> Turmas Recentes
+                  <GraduationCap className="size-4 text-turma" /> Turmas Recentes
                 </CardTitle>
                 <CardDescription>Últimas turmas cadastradas no sistema</CardDescription>
               </div>
@@ -325,26 +354,31 @@ export function DashboardPage() {
             <CardContent className="space-y-2">
               {isLoading && <p className="text-xs text-muted-foreground">Carregando turmas...</p>}
               {!isLoading && turmas.length === 0 && (
-                <p className="text-xs text-muted-foreground py-4 text-center">Nenhuma turma cadastrada.</p>
+                <p className="text-xs text-muted-foreground py-4 text-center">
+                  Nenhuma turma cadastrada.
+                </p>
               )}
               {turmas.slice(0, 5).map((t) => (
                 <Link
                   key={t.id}
                   to="/turmas/$turmaId"
                   params={{ turmaId: t.id }}
-                  className="flex items-center justify-between rounded-xl border border-border/70 p-3 hover:bg-muted/50 transition-colors"
+                  className="flex items-center justify-between rounded-md border border-border bg-card p-3 transition-colors duration-(--dur-2) ease-(--ease-doc) hover:border-input hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
                   <div>
-                    <p className="font-semibold text-sm">{t.nome}</p>
+                    <p className="text-sm font-semibold">{t.nome}</p>
                     <p className="text-xs text-muted-foreground">
                       {t.curso} · {t.faculdade}
                     </p>
                   </div>
                   <div className="text-right flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">
-                      {t.alunos?.[0]?.count ?? 0} alunos
+                      <span className="figure">{alunos.filter((a) => a.turmaId === t.id).length}</span> alunos
                     </span>
-                    <Badge variant={t.status === "ativa" ? "default" : "secondary"} className="text-[10px]">
+                    <Badge
+                      variant={t.status === "EmAndamento" ? "default" : "secondary"}
+                      className="text-[10px]"
+                    >
                       {t.status}
                     </Badge>
                   </div>
@@ -358,14 +392,16 @@ export function DashboardPage() {
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Heart className="size-4 text-pink-500" /> Demandas Recentes
+                  <Heart className="size-4 text-casamento" /> Demandas Recentes
                 </CardTitle>
                 <CardDescription>Casamentos, festas e ensaios com contrato ativo</CardDescription>
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
               {demandas.length === 0 && (
-                <p className="text-xs text-muted-foreground py-4 text-center">Nenhuma demanda cadastrada ainda.</p>
+                <p className="text-xs text-muted-foreground py-4 text-center">
+                  Nenhuma demanda cadastrada ainda.
+                </p>
               )}
               {demandas.slice(0, 5).map((d) => {
                 const linkMap = {
@@ -374,9 +410,12 @@ export function DashboardPage() {
                   ensaio: "/demandas/ensaio",
                 };
                 const tagMap = {
-                  casamento: { label: "Casamento", color: "bg-pink-100 text-pink-700 dark:bg-pink-950/50" },
-                  "festa-aniversario": { label: "Aniversário", color: "bg-purple-100 text-purple-700 dark:bg-purple-950/50" },
-                  ensaio: { label: "Ensaio", color: "bg-blue-100 text-blue-700 dark:bg-blue-950/50" },
+                  casamento: { label: "Casamento", color: "bg-casamento-surface text-casamento" },
+                  "festa-aniversario": {
+                    label: "Aniversário",
+                    color: "bg-festa-surface text-festa",
+                  },
+                  ensaio: { label: "Ensaio", color: "bg-ensaio-surface text-ensaio" },
                 };
                 const tag = tagMap[d.tipo];
 
@@ -384,24 +423,34 @@ export function DashboardPage() {
                   <Link
                     key={d.id}
                     to={linkMap[d.tipo]}
-                    className="flex items-center justify-between rounded-xl border border-border/70 p-3 hover:bg-muted/50 transition-colors"
+                    className="flex items-center justify-between rounded-md border border-border bg-card p-3 transition-colors duration-(--dur-2) ease-(--ease-doc) hover:border-input hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                   >
                     <div>
-                      <p className="font-semibold text-sm flex items-center gap-2">
+                      <p className="flex items-center gap-2 text-sm font-semibold">
                         {d.cliente}
-                        <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${tag.color}`}>
+                        <span
+                          className={`rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.06em] ${tag.color}`}
+                        >
                           {tag.label}
                         </span>
                       </p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                        <Calendar className="size-3" />
-                        {new Date(d.dataEvento + "T00:00:00").toLocaleDateString("pt-BR")} · {d.pacote}
+                      <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                        <Calendar className="size-3 shrink-0" />
+                        <span className="figure">
+                          {new Date(d.dataEvento + "T00:00:00").toLocaleDateString("pt-BR")}
+                        </span>
+                        · {d.pacote}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-foreground">{brl(d.valorTotal)}</p>
-                      <span className="text-[10px] text-emerald-600 font-medium">
-                        {d.parcelas.filter((p) => p.status === "pago").length}/{d.numParcelas} pagas
+                      <p className="figure text-sm font-medium text-foreground">
+                        {brl(d.valorTotal)}
+                      </p>
+                      <span className="text-[10px] font-medium text-success">
+                        <span className="figure">
+                          {d.parcelas.filter((p) => p.status === "pago").length}/{d.numParcelas}
+                        </span>{" "}
+                        pagas
                       </span>
                     </div>
                   </Link>
@@ -419,7 +468,7 @@ interface GroupStatCardProps {
   title: string;
   subtitle: string;
   icon: React.ElementType;
-  colorClass: string;
+  ruleColor: string;
   badgeBg: string;
   linkTo: string;
   contratado: number;
@@ -432,7 +481,7 @@ function GroupStatCard({
   title,
   subtitle,
   icon: Icon,
-  colorClass,
+  ruleColor,
   badgeBg,
   linkTo,
   contratado,
@@ -443,15 +492,21 @@ function GroupStatCard({
   const percentual = contratado > 0 ? Math.round((recebido / contratado) * 100) : 0;
 
   return (
-    <Card className={`shadow-card ${colorClass} transition-all hover:shadow-md`}>
+    /*  A régua vertical tinta+ouro (.rule-start) substitui o border-l-4
+        chapado.  O hover deixa de usar shadow-md (fora do sistema) e passa
+        a elevar para shadow-elevated.  */
+    <Card
+      className="rule-start overflow-hidden shadow-card transition-shadow duration-(--dur-2) ease-(--ease-doc) hover:shadow-elevated"
+      style={{ "--rule-color": ruleColor } as React.CSSProperties}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2.5">
-            <span className={`p-2 rounded-lg ${badgeBg}`}>
+            <span className={`rounded-md p-2 ${badgeBg}`}>
               <Icon className="size-5" />
             </span>
             <div>
-              <CardTitle className="text-base font-bold tracking-tight">{title}</CardTitle>
+              <CardTitle className="text-base font-semibold tracking-tight">{title}</CardTitle>
               <CardDescription className="text-xs">{subtitle}</CardDescription>
             </div>
           </div>
@@ -467,38 +522,53 @@ function GroupStatCard({
         <div className="space-y-1">
           <div className="flex justify-between text-xs">
             <span className="text-muted-foreground">Recebido vs Contratado</span>
-            <span className="font-semibold text-foreground">{percentual}%</span>
+            <span className="figure font-medium text-foreground">{percentual}%</span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-2 w-full overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuenow={percentual}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Recebido em ${title}`}
+          >
             <div
-              className="h-full bg-primary transition-all duration-500"
-              style={{ width: `${Math.min(percentual, 100)}%` }}
+              className="h-full transition-[width] duration-(--dur-3) ease-(--ease-doc)"
+              style={{ width: `${Math.min(percentual, 100)}%`, backgroundColor: ruleColor }}
             />
           </div>
         </div>
 
         {/* Quadro com 4 Métricas */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 pt-1">
-          <div className="p-2.5 rounded-lg bg-muted/50 border text-center">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Contratado</p>
-            <p className="text-xs font-bold text-foreground mt-0.5">{brl(contratado)}</p>
+          <div className="rounded-md border border-border bg-muted/60 p-2.5 text-center">
+            <p className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+              Contratado
+            </p>
+            <p className="figure mt-1 text-xs font-medium text-foreground">{brl(contratado)}</p>
           </div>
 
-          <div className="p-2.5 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 text-center">
-            <p className="text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Entradas</p>
-            <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400 mt-0.5">{brl(recebido)}</p>
+          <div className="rounded-md border border-success/25 bg-success/8 p-2.5 text-center">
+            <p className="text-[10px] uppercase tracking-[0.1em] text-success">Entradas</p>
+            <p className="figure mt-1 text-xs font-medium text-success">{brl(recebido)}</p>
           </div>
 
-          <div className="p-2.5 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/50 text-center">
-            <p className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400">Falta</p>
-            <p className="text-xs font-bold text-amber-700 dark:text-amber-400 mt-0.5">{brl(falta)}</p>
+          <div className="rounded-md border border-warning/25 bg-warning/8 p-2.5 text-center">
+            <p className="text-[10px] uppercase tracking-[0.1em] text-warning">Falta</p>
+            <p className="figure mt-1 text-xs font-medium text-warning">{brl(falta)}</p>
           </div>
 
-          <div className={`p-2.5 rounded-lg border text-center ${atrasado > 0 ? "bg-destructive/10 border-destructive/30" : "bg-muted/50"}`}>
-            <p className={`text-[10px] uppercase tracking-wider ${atrasado > 0 ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
+          <div
+            className={`rounded-md border p-2.5 text-center ${atrasado > 0 ? "border-destructive/30 bg-destructive/8" : "border-border bg-muted/60"}`}
+          >
+            <p
+              className={`text-[10px] uppercase tracking-[0.1em] ${atrasado > 0 ? "font-semibold text-destructive" : "text-muted-foreground"}`}
+            >
               Atrasados
             </p>
-            <p className={`text-xs font-bold mt-0.5 ${atrasado > 0 ? "text-destructive" : "text-foreground"}`}>
+            <p
+              className={`figure mt-1 text-xs font-medium ${atrasado > 0 ? "text-destructive" : "text-foreground"}`}
+            >
               {brl(atrasado)}
             </p>
           </div>

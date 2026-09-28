@@ -2,13 +2,12 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { GraduationCap } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, lerSessao, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { apenasDigitos, cpfParaEmail, saveClienteSession, clearClienteSession, getClienteSession } from "@/lib/aluno-login";
-import { loadDemandas } from "@/lib/demandas-store";
+import { apenasDigitos, cpfParaEmail } from "@/lib/aluno-login";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -39,14 +38,7 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    // Verifica se já existe sessão ativa
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) void navigate({ to: "/painel" });
-    });
-    const clientSession = getClienteSession();
-    if (clientSession?.cpf) {
-      void navigate({ to: "/painel" });
-    }
+    if (lerSessao()) void navigate({ to: "/painel" });
   }, [navigate]);
 
   const submit = async (e: React.FormEvent) => {
@@ -54,112 +46,63 @@ function AuthPage() {
     setBusy(true);
     try {
       if (mode === "formando") {
-        const rawDigits = apenasDigitos(cpf);
-        if (rawDigits.length !== 11) {
+        const digitos = apenasDigitos(cpf);
+        if (digitos.length !== 11)
           throw new Error("Por favor, digite os 11 números do seu CPF (somente números).");
-        }
 
-        // 1. Tenta autenticação no Supabase Auth primeiro
-        try {
-          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-            email: cpfParaEmail(rawDigits),
-            password: rawDigits,
-          });
-
-          if (!authError && authData.session) {
-            clearClienteSession();
-            toast.success("Acesso liberado com sucesso!");
-            void navigate({ to: "/painel" });
-            return;
-          }
-        } catch (e) {
-          // Continua para verificação local de alunos e demandas
-        }
-
-        // 2. Verifica se o CPF está cadastrado na tabela de Formandos (Alunos)
-        try {
-          const { data: alunoDb } = await supabase
-            .from("alunos")
-            .select("id, nome_completo, cpf, turma_id")
-            .eq("cpf", rawDigits)
-            .maybeSingle();
-
-          if (alunoDb) {
-            saveClienteSession({
-              cpf: rawDigits,
-              nome: alunoDb.nome_completo,
-              tipo: "aluno",
-              email: cpfParaEmail(rawDigits),
-              alunoId: alunoDb.id,
-            });
-            toast.success(`Bem-vindo, ${alunoDb.nome_completo}! Acesso liberado.`);
-            void navigate({ to: "/painel" });
-            return;
-          }
-        } catch (e) {
-          // Continua
-        }
-
-        // 3. Verifica se o CPF pertence a uma Demanda (Casamento, Aniversário, Ensaio)
-        const demandas = loadDemandas();
-        const clienteDemanda = demandas.find((d) => apenasDigitos(d.cpf) === rawDigits);
-
-        if (clienteDemanda) {
-          saveClienteSession({
-            cpf: rawDigits,
-            nome: clienteDemanda.cliente,
-            tipo: "demanda",
-            email: cpfParaEmail(rawDigits),
-            demandaId: clienteDemanda.id,
-          });
-          toast.success(`Bem-vindo, ${clienteDemanda.cliente}! Acesso liberado.`);
-          void navigate({ to: "/painel" });
-          return;
-        }
-
-        throw new Error(
-          `CPF ${rawDigits} não encontrado no sistema. Verifique o número digitado ou contate a JM Formaturas.`
-        );
+        /*  Formando entra com o CPF nos dois campos: a API cria o acesso
+            na adesão com e-mail derivado do CPF e o próprio CPF como senha
+            inicial.  */
+        const s = await auth.login(cpfParaEmail(digitos), digitos);
+        toast.success(`Bem-vindo, ${s.nomeCompleto}!`);
+        void navigate({ to: "/painel" });
       } else if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        clearClienteSession();
+        await auth.login(email, password);
         void navigate({ to: "/painel" });
       } else {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: window.location.origin,
-            data: { full_name: nome },
-          },
-        });
-        if (error) throw error;
-        clearClienteSession();
+        await auth.registrar(email, password, nome);
         toast.success("Conta criada!");
         void navigate({ to: "/painel" });
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Não foi possível entrar");
+      /*  401 no fluxo do formando quase sempre significa CPF não cadastrado,
+          e não senha errada — dizer "credenciais inválidas" mandaria ele
+          conferir uma senha que ele nem escolheu.  */
+      const msg =
+        err instanceof ApiError && err.status === 401
+          ? mode === "formando"
+            ? "CPF não encontrado. Confira o número ou fale com a JM Formaturas."
+            : "E-mail ou senha incorretos."
+          : err instanceof Error
+            ? err.message
+            : "Não foi possível entrar";
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-brand px-4 py-10">
+    <div className="ink-field flex min-h-screen items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
-        <div className="mb-6 flex flex-col items-center text-primary-foreground">
-          <span className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-gold text-accent-foreground">
+        <div className="mb-7 flex flex-col items-center">
+          <span className="mb-4 flex size-14 items-center justify-center rounded-xl bg-gold text-accent-foreground">
             <GraduationCap className="size-7" />
           </span>
           <h1 className="font-display text-2xl font-semibold">JM Formaturas & Eventos</h1>
-          <p className="text-sm opacity-75">Gestão de formaturas, casamentos, aniversários e ensaios</p>
+          {/*  opacity-75 -> valor explícito e medido (8.70:1 sobre a tinta).  */}
+          <p className="on-ink-muted mt-1 text-sm">
+            Gestão de formaturas, casamentos, aniversários e ensaios
+          </p>
         </div>
         <Card className="shadow-elevated">
           <CardHeader>
             <CardTitle>
-              {mode === "formando" ? "Acesso do Formando / Cliente" : mode === "login" ? "Entrar (Equipe)" : "Criar conta"}
+              {mode === "formando"
+                ? "Acesso do Formando / Cliente"
+                : mode === "login"
+                  ? "Entrar (Equipe)"
+                  : "Criar conta"}
             </CardTitle>
             <CardDescription>
               {mode === "formando"
@@ -173,10 +116,13 @@ function AuthPage() {
             <form onSubmit={submit} className="space-y-4">
               {mode === "formando" ? (
                 <div className="space-y-2">
-                  <Label htmlFor="cpf">CPF (Login e Senha)</Label>
+                  <Label htmlFor="cpf">CPF</Label>
+                  {/*  CPF é dado numérico: Plex Mono tabular alinha os grupos
+                      de dígitos e casa com o placeholder mascarado.  */}
                   <Input
                     id="cpf"
                     inputMode="numeric"
+                    className="figure tracking-normal"
                     value={cpf}
                     onChange={(e) => setCpf(e.target.value)}
                     placeholder="000.000.000-00"
@@ -191,7 +137,13 @@ function AuthPage() {
               {mode === "signup" && (
                 <div className="space-y-2">
                   <Label htmlFor="nome">Nome completo</Label>
-                  <Input id="nome" value={nome} onChange={(e) => setNome(e.target.value)} required maxLength={120} />
+                  <Input
+                    id="nome"
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                    required
+                    maxLength={120}
+                  />
                 </div>
               )}
               {mode !== "formando" && (
@@ -227,17 +179,29 @@ function AuthPage() {
             </form>
             <div className="mt-4 flex flex-col gap-1 text-center text-sm text-muted-foreground">
               {mode !== "formando" && (
-                <button type="button" onClick={() => setMode("formando")} className="underline-offset-4 hover:underline">
+                <button
+                  type="button"
+                  onClick={() => setMode("formando")}
+                  className="cursor-pointer rounded-sm py-0.5 text-gold-ink underline-offset-4 transition-colors duration-(--dur-2) ease-(--ease-doc) hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
                   Sou formando / cliente (login por CPF)
                 </button>
               )}
               {mode !== "login" && (
-                <button type="button" onClick={() => setMode("login")} className="underline-offset-4 hover:underline">
+                <button
+                  type="button"
+                  onClick={() => setMode("login")}
+                  className="cursor-pointer rounded-sm py-0.5 text-gold-ink underline-offset-4 transition-colors duration-(--dur-2) ease-(--ease-doc) hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
                   Sou da equipe (e-mail e senha)
                 </button>
               )}
               {mode !== "signup" && (
-                <button type="button" onClick={() => setMode("signup")} className="underline-offset-4 hover:underline">
+                <button
+                  type="button"
+                  onClick={() => setMode("signup")}
+                  className="cursor-pointer rounded-sm py-0.5 text-gold-ink underline-offset-4 transition-colors duration-(--dur-2) ease-(--ease-doc) hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
                   Criar conta de equipe
                 </button>
               )}

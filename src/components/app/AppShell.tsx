@@ -13,7 +13,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -34,13 +34,8 @@ import {
   SidebarTrigger,
   SidebarInset,
 } from "@/components/ui/sidebar";
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 
-import { clearClienteSession } from "@/lib/aluno-login";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { isStaff, user } = useAuth();
@@ -48,29 +43,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
-  const signOut = async () => {
-    clearClienteSession();
-    await supabase.auth.signOut();
+  const signOut = () => {
+    auth.sair();
     void navigate({ to: "/auth" });
   };
 
-  const isDemandasActive =
-    currentPath.startsWith("/turmas") || currentPath.startsWith("/demandas");
+  const isDemandasActive = currentPath.startsWith("/turmas") || currentPath.startsWith("/demandas");
 
   return (
     <SidebarProvider defaultOpen>
       <div className="flex min-h-screen w-full bg-background text-foreground">
-        <Sidebar variant="sidebar" collapsible="icon" className="border-r border-border/60">
-          <SidebarHeader className="border-b border-border/40 p-4">
+        <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border">
+          <SidebarHeader className="border-b border-sidebar-border p-4">
             <div className="flex items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gold text-accent-foreground shadow-sm">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-gold text-accent-foreground">
                 <GraduationCap className="size-5" />
               </span>
               <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
-                <span className="font-display text-base font-semibold text-foreground">
+                <span className="font-display text-base font-semibold text-sidebar-foreground">
                   JM Formaturas
                 </span>
-                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-sidebar-primary">
                   {isStaff ? "Painel de Gestão" : "Área do formando"}
                 </span>
               </div>
@@ -81,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {isStaff ? (
               <>
                 <SidebarGroup>
-                  <SidebarGroupLabel className="px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                  <SidebarGroupLabel className="px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/70">
                     NAVEGAÇÃO
                   </SidebarGroupLabel>
                   <SidebarGroupContent>
@@ -92,8 +85,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                           isActive={currentPath === "/dashboard"}
                           tooltip="VISÃO GERAL"
                         >
-                          <Link to="/dashboard" className="flex items-center gap-2.5 font-medium tracking-wide">
-                            <LayoutDashboard className="size-4 text-brand dark:text-gold" />
+                          <Link
+                            to="/dashboard"
+                            className="flex items-center gap-2.5 font-medium tracking-wide"
+                          >
+                            <LayoutDashboard className="size-4 text-sidebar-primary" />
                             <span>VISÃO GERAL</span>
                           </Link>
                         </SidebarMenuButton>
@@ -105,8 +101,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                           isActive={currentPath.startsWith("/financeiro")}
                           tooltip="FINANCEIRO"
                         >
-                          <Link to="/financeiro" className="flex items-center gap-2.5 font-medium tracking-wide">
-                            <Wallet className="size-4 text-brand dark:text-gold" />
+                          <Link
+                            to="/financeiro"
+                            className="flex items-center gap-2.5 font-medium tracking-wide"
+                          >
+                            <Wallet className="size-4 text-sidebar-primary" />
                             <span>FINANCEIRO</span>
                           </Link>
                         </SidebarMenuButton>
@@ -116,7 +115,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </SidebarGroup>
 
                 <SidebarGroup className="mt-2">
-                  <SidebarGroupLabel className="px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                  <SidebarGroupLabel className="px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/70">
                     DEMANDAS
                   </SidebarGroupLabel>
                   <SidebarGroupContent>
@@ -130,7 +129,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                               className="w-full justify-between font-medium tracking-wide"
                             >
                               <span className="flex items-center gap-2.5">
-                                <FolderKanban className="size-4 text-gold" />
+                                <FolderKanban className="size-4 text-sidebar-primary" />
                                 <span>DEMANDAS</span>
                               </span>
                               <ChevronDown className="size-4 text-muted-foreground transition-transform duration-200 group-data-[state=closed]/collapsible:-rotate-90 group-data-[collapsible=icon]:hidden" />
@@ -143,8 +142,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                                   asChild
                                   isActive={currentPath.startsWith("/turmas")}
                                 >
-                                  <Link to="/turmas" className="flex items-center gap-2 font-medium tracking-wide">
-                                    <Users className="size-4 text-primary" />
+                                  <Link
+                                    to="/turmas"
+                                    className="flex items-center gap-2 font-medium tracking-wide"
+                                  >
+                                    <Users className="size-4 text-turma-on-ink" />
                                     <span>TURMAS</span>
                                   </Link>
                                 </SidebarMenuSubButton>
@@ -159,7 +161,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                                     to="/demandas/casamento"
                                     className="flex items-center gap-2 font-medium tracking-wide"
                                   >
-                                    <Heart className="size-4 text-pink-500" />
+                                    <Heart className="size-4 text-casamento-on-ink" />
                                     <span>CASAMENTO</span>
                                   </Link>
                                 </SidebarMenuSubButton>
@@ -174,7 +176,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                                     to="/demandas/festa-aniversario"
                                     className="flex items-center gap-2 font-medium tracking-wide"
                                   >
-                                    <PartyPopper className="size-4 text-purple-500" />
+                                    <PartyPopper className="size-4 text-festa-on-ink" />
                                     <span>FESTA DE ANIVERSÁRIO</span>
                                   </Link>
                                 </SidebarMenuSubButton>
@@ -189,7 +191,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                                     to="/demandas/ensaio"
                                     className="flex items-center gap-2 font-medium tracking-wide"
                                   >
-                                    <Camera className="size-4 text-blue-500" />
+                                    <Camera className="size-4 text-ensaio-on-ink" />
                                     <span>ENSAIO</span>
                                   </Link>
                                 </SidebarMenuSubButton>
@@ -204,7 +206,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </>
             ) : (
               <SidebarGroup>
-                <SidebarGroupLabel className="px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                <SidebarGroupLabel className="px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/70">
                   FORMANDO
                 </SidebarGroupLabel>
                 <SidebarGroupContent>
@@ -215,8 +217,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                         isActive={currentPath === "/painel"}
                         tooltip="MEU PAINEL"
                       >
-                        <Link to="/painel" className="flex items-center gap-2.5 font-medium tracking-wide">
-                          <UserRound className="size-4 text-brand dark:text-gold" />
+                        <Link
+                          to="/painel"
+                          className="flex items-center gap-2.5 font-medium tracking-wide"
+                        >
+                          <UserRound className="size-4 text-sidebar-primary" />
                           <span>MEU PAINEL</span>
                         </Link>
                       </SidebarMenuButton>
@@ -227,11 +232,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
           </SidebarContent>
 
-          <SidebarFooter className="border-t border-border/40 p-3">
+          <SidebarFooter className="border-t border-sidebar-border p-3">
             <div className="flex items-center justify-between gap-2 group-data-[collapsible=icon]:justify-center">
-              <div className="truncate text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-                <p className="font-medium text-foreground truncate">{user?.email}</p>
-                <p className="text-[10px] text-muted-foreground">
+              <div className="truncate text-xs group-data-[collapsible=icon]:hidden">
+                <p className="truncate font-medium text-sidebar-foreground">{user?.email}</p>
+                <p className="text-[10px] text-sidebar-foreground/70">
                   {isStaff ? "Administrador" : "Aluno / Formando"}
                 </p>
               </div>
@@ -250,12 +255,18 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Sidebar>
 
         <SidebarInset className="flex min-w-0 flex-1 flex-col bg-background">
-          <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border/60 bg-background/95 px-4 backdrop-blur-md">
+          <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-border bg-background/85 px-4 backdrop-blur-md">
             <div className="flex items-center gap-3">
               <SidebarTrigger />
-              <div className="h-4 w-px bg-border" />
-              <span className="text-sm font-medium text-muted-foreground">
-                JM Formaturas — {isStaff ? "Painel de Gestão" : "Área do Formando"}
+              <div className="h-4 w-px bg-border" aria-hidden="true" />
+              <span className="text-sm text-muted-foreground">
+                {/*  Hierarquia dentro da própria linha: marca na face display,
+                     o papel do usuário fica como qualificador secundário.  */}
+                <span className="font-display font-semibold text-foreground">JM Formaturas</span>
+                <span className="mx-1.5 text-muted-foreground/50" aria-hidden="true">
+                  /
+                </span>
+                {isStaff ? "Painel de Gestão" : "Área do Formando"}
               </span>
             </div>
 
