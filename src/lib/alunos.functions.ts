@@ -102,6 +102,9 @@ const adesaoSchema = z.object({
       vencimento: z.string(),
     })
   ),
+
+  /*  Rubrica desenhada pelo formando, PNG em data URL.  */
+  assinaturaImagem: z.string().nullish(),
 });
 
 export const realizarAdesaoPublica = createServerFn({ method: "POST" })
@@ -110,7 +113,14 @@ export const realizarAdesaoPublica = createServerFn({ method: "POST" })
     const cpfLimpo = apenasDigitos(data.dadosPessoais.cpf);
     if (cpfLimpo.length !== 11) throw new Error("CPF deve ter 11 digitos.");
 
-    const resp = await apiFetch<{ alunoId: string; nome: string; cpf: string; loginUsuario: string }>({
+    const resp = await apiFetch<{
+      alunoId: string;
+      nome: string;
+      cpf: string;
+      loginUsuario: string;
+      contratoId: string;
+      assinado: boolean;
+    }>({
       method: "POST",
       path: "/api/v1/public/adesao",
       body: {
@@ -133,6 +143,10 @@ export const realizarAdesaoPublica = createServerFn({ method: "POST" })
         autorizaImagem: data.autorizaImagem,
         textoContratoCompleto: data.textoContratoCompleto,
         parcelas: data.parcelas,
+
+        /*  Vai no MESMO POST: assinar num segundo passo abriria a janela em
+            que o formando acha que assinou e o contrato está sem rubrica.  */
+        assinaturaImagem: data.assinaturaImagem ?? null,
       },
     });
 

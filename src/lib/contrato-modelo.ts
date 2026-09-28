@@ -81,6 +81,19 @@ export type ParcelaPdf = {
   forma_pagamento: string | null;
 };
 
+/*  Assinatura já registrada na API.  O PDF a imprime junto com a trilha,
+    porque um contrato exportado sem a prova do aceite é justamente o
+    documento que alguém usaria para alegar que nunca assinou.  */
+export type AssinaturaPdf = {
+  imagem?: string | null | undefined;
+  assinanteNome?: string | null | undefined;
+  assinanteCpf?: string | null | undefined;
+  assinadoEm?: string | null | undefined;
+  assinadoIp?: string | null | undefined;
+  hashDocumento?: string | null | undefined;
+  textoIntacto: boolean;
+};
+
 export type ContratoPdfInput = {
   aluno: {
     nome_completo: string;
@@ -104,10 +117,11 @@ export type ContratoPdfInput = {
   };
   parcelas: ParcelaPdf[];
   texto: string;
+  assinatura?: AssinaturaPdf | null | undefined;
 };
 
 export function gerarContratoPdf(input: ContratoPdfInput) {
-  const { aluno, contrato, parcelas, texto } = input;
+  const { aluno, contrato, parcelas, texto, assinatura } = input;
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const marginX = 16;
   const largura = 210 - marginX * 2;
@@ -201,16 +215,65 @@ export function gerarContratoPdf(input: ContratoPdfInput) {
     linha(paragrafo, { size: 9, gap: 4.4 });
   }
 
-  y += 14;
-  quebra(24);
+  y += 12;
+  quebra(48);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text("CONTRATANTE: ______________________________________", marginX, y);
   doc.text(`${EMPRESA.cidade}, ${dataBR(contrato.data_contrato)}`, 210 - marginX, y, { align: "right" });
-  y += 8;
+  y += 6;
+
+  if (assinatura?.imagem) {
+    /*  A rubrica vai ACIMA da linha, como numa folha assinada à mão.  */
+    try {
+      doc.addImage(assinatura.imagem, "PNG", marginX, y, 56, 18);
+    } catch {
+      /*  PNG corrompido não pode impedir a emissão: o bloco de auditoria
+          abaixo continua provando o aceite.  */
+    }
+    y += 19;
+  } else {
+    y += 8;
+  }
+
+  doc.line(marginX, y, marginX + 90, y);
+  y += 4;
+  doc.text("CONTRATANTE", marginX, y);
+  y += 5;
   doc.text(`${aluno.nome_completo} — CPF ${aluno.cpf ?? "—"}`, marginX, y);
   y += 10;
   doc.text(`CONTRATADO: ${EMPRESA.cnpj} — ${EMPRESA.responsavel}`, marginX, y);
+  y += 10;
+
+  if (assinatura?.assinadoEm) {
+    quebra(26);
+    doc.setDrawColor(200);
+    doc.line(marginX, y, 210 - marginX, y);
+    y += 5;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("ASSINATURA ELETRÔNICA", marginX, y);
+    y += 4;
+
+    doc.setFont("helvetica", "normal");
+
+    const quando = new Date(assinatura.assinadoEm).toLocaleString("pt-BR");
+    linha(
+      `Assinado por ${assinatura.assinanteNome ?? aluno.nome_completo}`
+        + (assinatura.assinanteCpf ? ` (CPF ${assinatura.assinanteCpf})` : "")
+        + ` em ${quando}`
+        + (assinatura.assinadoIp ? ` — IP ${assinatura.assinadoIp}` : ""),
+      { size: 7, gap: 3.4 },
+    );
+
+    /*  O hash permite conferir, mais tarde, que este PDF corresponde ao
+        texto que foi efetivamente aceito.  */
+    if (assinatura.hashDocumento)
+      linha(`Impressão digital do documento (SHA-256): ${assinatura.hashDocumento}`, { size: 7, gap: 3.4 });
+
+    if (!assinatura.textoIntacto)
+      linha("ATENÇÃO: o texto atual NÃO corresponde ao que foi assinado.", { size: 7, bold: true, gap: 3.4 });
+  }
 
   const arquivo = `contrato-${aluno.nome_completo.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
   doc.save(arquivo);
