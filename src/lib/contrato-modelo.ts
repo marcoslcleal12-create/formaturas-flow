@@ -65,7 +65,14 @@ Acréscimo de horas na cobertura do evento será cobrado com 20% do valor da hor
 9. RESPONSABILIDADE POR DANOS A EQUIPAMENTOS
 O CONTRATANTE se responsabiliza integralmente por qualquer dano, quebra ou avaria nos equipamentos e materiais utilizados pela CONTRATADA, incluindo câmeras, tripés, iluminação, cenários e acessórios, causados por convidados, crianças ou terceiros presentes no evento, comprometendo-se a reembolsar integralmente o valor de reparo ou substituição.
 
-10. FORO
+10. ASSINATURA ELETRÔNICA
+10.1. As partes declaram, de forma expressa e irretratável, que ADMITEM COMO VÁLIDA a assinatura eletrônica aposta neste instrumento, bem como os meios eletrônicos de comprovação de sua autoria e integridade, nos termos do art. 10, § 2º, da Medida Provisória nº 2.200-2/2001 e do art. 4º, inciso II, da Lei nº 14.063/2020.
+10.2. O CONTRATANTE reconhece que, no ato da assinatura, são registrados e passam a integrar este contrato: a imagem da rubrica por ele lançada, seu nome e CPF, a data e a hora do aceite, o endereço IP e o dispositivo utilizados, e a impressão digital criptográfica (resumo SHA-256) do texto integral aqui assinado.
+10.3. As partes reconhecem que a impressão digital criptográfica referida acima torna detectável qualquer alteração posterior no teor deste contrato, e que o texto assinado é exclusivamente aquele cujo resumo foi registrado no momento do aceite.
+10.4. A via eletrônica deste contrato, acompanhada do respectivo registro de assinatura, produz todos os efeitos legais entre as partes e é suficiente para comprovar a contratação, dispensada a assinatura em papel e a presença de testemunhas.
+10.5. O CONTRATANTE declara que os dados cadastrais por ele informados são verdadeiros e de sua exclusiva responsabilidade, e que o acesso utilizado para a assinatura é pessoal e intransferível.
+
+11. FORO
 Fica eleito o foro da comarca de Araguaína-TO para dirimir quaisquer controvérsias oriundas deste contrato, com renúncia a qualquer outro, por mais privilegiado que seja.`;
 
 const money = (v: number) =>
