@@ -2,7 +2,18 @@
 @source "../src";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+/*  O tema desta aplicação é escuro no :root — não há modo claro, e nada
+    põe a classe `dark` no documento.  Com a definição original
+    (`&:is(.dark *)`), TODA regra `dark:` virava letra morta, e o que
+    pintava era a variante de tema claro: fundos `bg-emerald-50`,
+    `bg-amber-50` e afins por cima do preto, que é o que deixava os
+    cartões com aquela cor de lama, e textos `text-*-700` ilegíveis.
+
+    Aqui o `dark:` passa a valer sempre, que é a verdade desta interface.
+    O bloco de tokens `.dark` mais abaixo segue dormente de propósito: ele
+    traz outra paleta (cinza-ardósia, primária quase branca) e ligá-lo
+    apagaria o preto com dourado da JM.  */
+@custom-variant dark (&);
 
 /*
  * Design system definition.
