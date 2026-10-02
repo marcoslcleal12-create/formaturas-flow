@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { brl } from "@/components/app/AppShell";
 import { PagamentoDialog } from "@/components/app/PagamentoDialog";
+import { AssinarContratoCard } from "@/components/app/AssinarContratoCard";
 import {
   CLAUSULAS_PADRAO,
   formaPagamentoLabel,
@@ -597,6 +598,19 @@ function PainelAluno() {
               )}
             </Card>
           </div>
+
+          {/*  Assinatura do contrato pelo próprio formando.
+
+               Antes a rubrica só era colhida no fluxo de adesão, então
+               contrato lançado pela equipe ficava para sempre sem assinatura
+               e sem ninguém que pudesse assiná-lo.  */}
+          {contrato && aluno && (
+            <AssinarContratoCard
+              contratoId={contrato.id}
+              nomeCompleto={aluno.nomeCompleto}
+              cpf={aluno.cpf}
+            />
+          )}
 
           {/* Acompanhamento Financeiro */}
           <Card className="shadow-card">
