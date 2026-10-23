@@ -27,6 +27,7 @@ export type CobrancaRoteadaInput = {
   referenciaExterna: string;
   pagador: PagadorInfo;
   parcelaId?: string | null;
+  provedor?: "cora" | "asaas" | null;
 };
 
 export type CobrancaResponse = {

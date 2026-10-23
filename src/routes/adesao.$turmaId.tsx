@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { 
   User, 
@@ -35,15 +35,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { 
-  extrairPacotesTurma, 
-  calcularParcelas, 
-  DIAS_VENCIMENTO, 
-  type PacoteItem 
+import {
+  extrairPacotesTurma,
+  calcularParcelas,
+  extrairMaxParcelas,
+  extrairDataFormatura,
+  extrairAceitaCartao,
+  parcelasDisponiveis,
+  DIAS_VENCIMENTO,
+  type PacoteItem
 } from "@/lib/turma-pacotes";
-import { apenasDigitos, saveClienteSession } from "@/lib/aluno-login";
+import { apenasDigitos, cpfParaEmail, saveClienteSession } from "@/lib/aluno-login";
+import { login as apiLogin } from "@/lib/api/auth";
+import { marcarPagamentoPendente } from "@/lib/pagamento-pendente";
 import { CLAUSULAS_PADRAO, EMPRESA } from "@/lib/contrato-modelo";
 import { realizarAdesaoPublica, buscarTurmaPublica } from "@/lib/alunos.functions";
+import { registrarVisitaAdesao } from "@/lib/api/turmas";
 
 
 export const Route = createFileRoute("/adesao/$turmaId")({
@@ -101,8 +108,11 @@ function AdesaoTurmaPage() {
   });
 
   // Estado Etapa 2 - Pacote e Financeiro
+  // numParcelas e formaPagamento começam "vazios" de propósito: o cliente
+  // PRECISA escolher — nada de cadastro gerado com o padrão sem ele selecionar.
   const [pacoteId, setPacoteId] = useState<string>("");
-  const [numParcelas, setNumParcelas] = useState<number>(1);
+  const [numParcelas, setNumParcelas] = useState<number>(0);
+  const [formaPagamento, setFormaPagamento] = useState<"" | "boleto" | "cartao">("");
   const [diaVencimento, setDiaVencimento] = useState<number>(10);
 
   // Estado Etapa 3 - Uso de Imagem
@@ -163,10 +173,36 @@ function AdesaoTurmaPage() {
   const todosPacotes = extrairPacotesTurma(turma?.observacoes, turma?.curso);
   const pacotesAtivos = todosPacotes.filter((p) => p.ativo !== false);
 
-  // Se nenhum pacote selecionado, define o primeiro ativo
-  const pacoteSelecionado = pacotesAtivos.find((p) => p.id === pacoteId) || pacotesAtivos[0];
+  /*  Regras de parcelamento da turma: teto configurado pela empresa, reduzido
+      dinamicamente pelos meses que faltam ate a formatura (parcelasDisponiveis).  */
+  const maxParcelasTurma = extrairMaxParcelas(turma?.observacoes);
+  const dataFormaturaTurma =
+    extrairDataFormatura(turma?.observacoes) ??
+    ((turma as any)?.dataEvento ? String((turma as any).dataEvento).slice(0, 10) : null);
+  const maxParcelasPermitido = parcelasDisponiveis(maxParcelasTurma, dataFormaturaTurma);
+  const aceitaCartaoTurma = extrairAceitaCartao(turma?.observacoes);
 
-  const parcelasCalculadas = pacoteSelecionado
+  /*  Garante que o parcelamento escolhido nunca exceda o maximo liberado.  */
+  useEffect(() => {
+    if (numParcelas > maxParcelasPermitido) setNumParcelas(maxParcelasPermitido);
+  }, [maxParcelasPermitido]);
+
+  /*  Turma sem cartao liberado so tem boleto: ja deixa escolhido pra nao pedir
+      uma "escolha" de opcao unica. Com cartao, o cliente precisa escolher.  */
+  useEffect(() => {
+    if (!aceitaCartaoTurma) setFormaPagamento("boleto");
+  }, [aceitaCartaoTurma]);
+
+  /*  Conta 1 acesso ao link (uma vez por carregamento da pagina).  */
+  useEffect(() => {
+    void registrarVisitaAdesao(turmaId);
+  }, [turmaId]);
+
+  // O cliente PRECISA escolher o pacote — sem default automático (era isso que
+  // deixava concluir o cadastro sem o cliente selecionar nada).
+  const pacoteSelecionado = pacotesAtivos.find((p) => p.id === pacoteId);
+
+  const parcelasCalculadas = pacoteSelecionado && numParcelas >= 1
     ? calcularParcelas(pacoteSelecionado.investimento, numParcelas, diaVencimento)
     : [];
 
@@ -175,6 +211,8 @@ function AdesaoTurmaPage() {
     mutationFn: async () => {
       if (!turma) throw new Error("Evento/Turma não encontrado");
       if (!pacoteSelecionado) throw new Error("Selecione um pacote");
+      if (!formaPagamento) throw new Error("Escolha a forma de pagamento");
+      if (!numParcelas || numParcelas < 1) throw new Error("Escolha o parcelamento");
       if (!autorizaImagem) throw new Error("Responda à autorização de uso de imagem");
       if (!aceitouContrato) throw new Error("Você precisa aceitar os termos do contrato");
       if (!assinatura) throw new Error("Assine o contrato no campo indicado para finalizar");
@@ -199,7 +237,7 @@ PACOTE SELECIONADO:
 ${pacoteSelecionado.nome}
 Material: ${pacoteSelecionado.material}
 Investimento Total: ${brl(pacoteSelecionado.investimento)}
-Forma de Pagamento: Boleto Bancário / PIX (${numParcelas}x de ${brl(pacoteSelecionado.investimento / numParcelas)})
+Forma de Pagamento: ${formaPagamento === "cartao" ? "Cartão de Crédito" : "Boleto Bancário / PIX"} (${numParcelas}x de ${brl(pacoteSelecionado.investimento / numParcelas)})
 Dia de Vencimento Escolhido: Dia ${diaVencimento}
 
 CRONOGRAMA DE VENCIMENTOS:
@@ -222,6 +260,7 @@ ${CLAUSULAS_PADRAO}`;
           valorTotal: pacoteSelecionado.investimento,
           numParcelas,
           diaVencimento,
+          formaPagamento: formaPagamento === "cartao" ? "cartao_credito" : "boleto",
           autorizaImagem: autorizaImagem === "sim",
           textoContratoCompleto,
           parcelas: parcelasCalculadas.map((p) => ({
@@ -233,6 +272,25 @@ ${CLAUSULAS_PADRAO}`;
         },
       });
 
+      /*  ENTRA DE VERDADE.  A adesão só gravava a "sessão do cliente" no
+          localStorage, que é enfeite: o painel e o pagamento chamam a API
+          pelo NAVEGADOR, com JWT.  Sem este login o formando terminava a
+          adesão e caía num painel que respondia 401 em /alunos/me e em
+          /pagamentos/* — sem contrato, sem parcela e sem como pagar.
+          O login do formando é CPF/CPF, igual ao da tela de entrada.  */
+      try {
+        await apiLogin(cpfParaEmail(res.cpf), apenasDigitos(res.cpf));
+      } catch (err) {
+        /*  Não derruba a adesão: ela já está gravada e assinada.  Mas avisa,
+            porque o painel sem token fica vazio — era justamente esse
+            silêncio que fazia a adesão parecer que "não finalizou".  */
+        console.error("adesão: login automático falhou", err);
+        toast.warning(
+          "Sua adesão foi registrada, mas não conseguimos abrir sua área automaticamente. " +
+            "Entre com o seu CPF como login e senha.",
+        );
+      }
+
       // Salva sessão local para autenticação imediata
       saveClienteSession({
         cpf: res.cpf,
@@ -242,14 +300,22 @@ ${CLAUSULAS_PADRAO}`;
         alunoId: res.alunoId,
       });
 
+      /*  No cartão o pagamento é o passo que fecha o negócio: o painel abre
+          o checkout da 1ª parcela sozinho.  */
+      if (formaPagamento === "cartao") marcarPagamentoPendente();
+
       return res;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["meu-cadastro"] });
       queryClient.invalidateQueries({ queryKey: ["meu-contrato"] });
       router.invalidate();
-      
-      toast.success("Adesão realizada com sucesso! Bem-vindo à sua área exclusiva.");
+
+      toast.success(
+        formaPagamento === "cartao"
+          ? "Adesão assinada! Agora finalize o pagamento da 1ª parcela no cartão."
+          : "Adesão realizada com sucesso! Bem-vindo à sua área exclusiva.",
+      );
       void navigate({ to: "/painel" });
     },
     onError: (err) => {
@@ -273,7 +339,15 @@ ${CLAUSULAS_PADRAO}`;
   // Validação da Etapa 2
   const avancarEtapa2 = () => {
     if (!pacoteSelecionado) {
-      toast.error("Por favor, selecione um pacote para continuar.");
+      toast.error("Escolha um pacote para continuar.");
+      return;
+    }
+    if (!formaPagamento) {
+      toast.error("Escolha a forma de pagamento (boleto ou cartão).");
+      return;
+    }
+    if (!numParcelas || numParcelas < 1) {
+      toast.error("Escolha em quantas vezes deseja pagar.");
       return;
     }
     setEtapa(3);
@@ -530,7 +604,7 @@ ${CLAUSULAS_PADRAO}`;
                 <div>
                   <CardTitle className="text-xl">Área 2: Escolha do Pacote e Forma de Pagamento</CardTitle>
                   <CardDescription className="mt-1">
-                    Selecione o pacote desejado e defina a quantidade de parcelas (1x a 12x) e o dia de vencimento.
+                    Selecione o pacote desejado e defina a quantidade de parcelas e o dia de vencimento.
                   </CardDescription>
                 </div>
                 <Badge variant="outline" className="text-xs">Etapa 2 de 4</Badge>
@@ -579,21 +653,67 @@ ${CLAUSULAS_PADRAO}`;
               {pacoteSelecionado && (
                 <div className="p-4 rounded-xl bg-muted/50 border border-border space-y-4">
                   <h4 className="font-semibold text-sm flex items-center gap-2 text-foreground">
-                    <CreditCard className="size-4 text-primary" /> Condições de Pagamento (Boleto Bancário)
+                    <CreditCard className="size-4 text-primary" /> Condições de Pagamento
                   </h4>
+
+                  {/* Forma de pagamento — OBRIGATÓRIA (sem isso não avança) */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold">Como você quer pagar?</Label>
+                    {aceitaCartaoTurma ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {([
+                          { id: "boleto", nome: "Boleto / PIX", desc: "Boleto bancário ou PIX" },
+                          { id: "cartao", nome: "Cartão de crédito", desc: "Cada parcela no checkout seguro do Asaas" },
+                        ] as const).map((f) => {
+                          const sel = formaPagamento === f.id;
+                          return (
+                            <div
+                              key={f.id}
+                              onClick={() => setFormaPagamento(f.id)}
+                              className={`p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                                sel ? "border-primary bg-primary/5 shadow-sm" : "border-border hover:border-primary/40 bg-card"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className={`size-4 rounded-full border flex items-center justify-center ${sel ? "border-primary bg-primary text-white" : "border-muted-foreground"}`}>
+                                  {sel && <span className="size-2 bg-white rounded-full" />}
+                                </span>
+                                <span className="font-semibold text-sm">{f.nome}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground pl-6 mt-0.5">{f.desc}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Boleto Bancário / PIX</p>
+                    )}
+
+                    {/*  Responde a pergunta que todo mundo faz aqui: "onde eu
+                         coloco o cartão?".  Os dados do cartão nunca passam
+                         por este site — quem processa é o Asaas, no checkout
+                         dele, aberto no fim da adesão.  */}
+                    {formaPagamento === "cartao" && (
+                      <p className="text-xs text-muted-foreground rounded-lg bg-background/70 border border-border p-3">
+                        Os dados do cartão <strong>não são pedidos aqui</strong>. Ao terminar a assinatura,
+                        abrimos o checkout seguro do Asaas para você pagar a 1ª parcela — as próximas ficam
+                        disponíveis na sua área, no mesmo lugar.
+                      </p>
+                    )}
+                  </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="numParcelas">Quantidade de Parcelas (1x a 12x)</Label>
+                      <Label htmlFor="numParcelas">Quantidade de Parcelas (1x a {maxParcelasPermitido}x)</Label>
                       <Select
-                        value={String(numParcelas)}
+                        value={numParcelas ? String(numParcelas) : ""}
                         onValueChange={(val) => setNumParcelas(Number(val))}
                       >
                         <SelectTrigger id="numParcelas">
-                          <SelectValue placeholder="Selecione o parcelamento" />
+                          <SelectValue placeholder="Escolha o parcelamento" />
                         </SelectTrigger>
                         <SelectContent>
-                          {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => {
+                          {Array.from({ length: maxParcelasPermitido }, (_, i) => i + 1).map((n) => {
                             const valor = Math.round((pacoteSelecionado.investimento / n) * 100) / 100;
                             return (
                               <SelectItem key={n} value={String(n)}>
@@ -603,10 +723,17 @@ ${CLAUSULAS_PADRAO}`;
                           })}
                         </SelectContent>
                       </Select>
+                      {maxParcelasPermitido < maxParcelasTurma && (
+                        <p className="text-[11px] font-medium text-amber-600 dark:text-amber-500">
+                          {maxParcelasPermitido === 1
+                            ? "Pela proximidade da formatura, o pagamento é somente à vista."
+                            : `Parcelamento limitado a ${maxParcelasPermitido}x pela proximidade da formatura.`}
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="diaVencimento">Melhor Dia de Vencimento do Boleto</Label>
+                      <Label htmlFor="diaVencimento">Melhor dia de vencimento</Label>
                       <Select
                         value={String(diaVencimento)}
                         onValueChange={(val) => setDiaVencimento(Number(val))}
@@ -628,13 +755,13 @@ ${CLAUSULAS_PADRAO}`;
                   {/* Simulação detalhada das parcelas */}
                   <div className="mt-4 space-y-2">
                     <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase">
-                      <span>Simulação dos Boletos ({parcelasCalculadas.length} parcelas)</span>
+                      <span>Simulação das parcelas ({parcelasCalculadas.length}x)</span>
                       <span>Total: {brl(pacoteSelecionado.investimento)}</span>
                     </div>
                     <div className="max-h-48 overflow-y-auto rounded-lg border border-border bg-background divide-y divide-border text-xs">
                       {parcelasCalculadas.map((p) => (
                         <div key={p.numero} className="p-2.5 flex items-center justify-between">
-                          <span className="font-medium">{p.numero}º Boleto – {p.mesAno}</span>
+                          <span className="font-medium">{p.numero}ª parcela – {p.mesAno}</span>
                           <div className="flex items-center gap-4">
                             <span className="text-muted-foreground">Venc: {p.vencimento.split("-").reverse().join("/")}</span>
                             <span className="font-bold text-foreground">{brl(p.valor)}</span>
@@ -650,7 +777,11 @@ ${CLAUSULAS_PADRAO}`;
                 <Button variant="outline" onClick={() => setEtapa(1)} className="gap-2">
                   <ArrowLeft className="size-4" /> Voltar
                 </Button>
-                <Button onClick={avancarEtapa2} className="gap-2 px-6">
+                <Button
+                  onClick={avancarEtapa2}
+                  disabled={!pacoteSelecionado || !formaPagamento || !numParcelas}
+                  className="gap-2 px-6"
+                >
                   Avançar para Uso de Imagem <ArrowRight className="size-4" />
                 </Button>
               </div>
@@ -781,7 +912,7 @@ ${CLAUSULAS_PADRAO}`;
                     <p><strong className="text-foreground">PACOTE:</strong> {pacoteSelecionado?.nome}</p>
                     <p><strong className="text-foreground">DESCRIÇÃO DO MATERIAL:</strong> {pacoteSelecionado?.material}</p>
                     <p><strong className="text-foreground">VALOR TOTAL:</strong> <span className="text-primary font-bold">{brl(pacoteSelecionado?.investimento || 0)}</span></p>
-                    <p><strong className="text-foreground">CONDIÇÃO:</strong> Boleto bancário em <span className="font-bold">{numParcelas}x de {brl((pacoteSelecionado?.investimento || 0) / numParcelas)}</span> com vencimento todo dia {diaVencimento}.</p>
+                    <p><strong className="text-foreground">CONDIÇÃO:</strong> {formaPagamento === "cartao" ? "Cartão de crédito" : "Boleto bancário"} em <span className="font-bold">{numParcelas}x de {brl((pacoteSelecionado?.investimento || 0) / (numParcelas || 1))}</span>{formaPagamento === "cartao" ? "." : ` com vencimento todo dia ${diaVencimento}.`}</p>
                   </div>
                 </div>
 
@@ -790,7 +921,7 @@ ${CLAUSULAS_PADRAO}`;
                   <div className="bg-muted/30 p-3 rounded-lg space-y-1">
                     {parcelasCalculadas.map((p) => (
                       <div key={p.numero} className="flex justify-between border-b border-border/50 pb-1 last:border-0 last:pb-0">
-                        <span>{p.numero}º Boleto: {p.mesAno} (Venc. {p.vencimento.split("-").reverse().join("/")})</span>
+                        <span>{p.numero}ª parcela: {p.mesAno} (Venc. {p.vencimento.split("-").reverse().join("/")})</span>
                         <span className="font-bold">{brl(p.valor)}</span>
                       </div>
                     ))}

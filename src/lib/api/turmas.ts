@@ -33,6 +33,7 @@ export type Turma = {
   dataEvento?: string | null;
   status: StatusTurma;
   observacoes?: string | null;
+  visitasAdesao?: number | null;
   criadaEm: string;
   atualizadaEm: string;
   alunos?: unknown[];
@@ -71,4 +72,14 @@ export async function updateTurma(id: string, input: TurmaInput): Promise<Turma>
 
 export async function deleteTurma(id: string): Promise<void> {
   await apiFetch({ method: "DELETE", path: `/api/v1/turmas/${id}` });
+}
+
+/*  Registra 1 acesso ao link de adesão (contador). Best-effort: nunca quebra
+    a página de adesão se falhar.  */
+export async function registrarVisitaAdesao(id: string): Promise<void> {
+  try {
+    await apiFetch({ method: "POST", path: `/api/v1/public/turmas/${id}/visita` });
+  } catch {
+    /* ignora */
+  }
 }

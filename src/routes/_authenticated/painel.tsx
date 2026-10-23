@@ -37,6 +37,8 @@ import {
 } from "@/lib/contrato-modelo";
 import { loadDemandas, formatarCpf, type DemandaItem } from "@/lib/demandas-store";
 import { apenasDigitos } from "@/lib/aluno-login";
+import { extrairAceitaCartao, extrairBancoBoleto } from "@/lib/turma-pacotes";
+import { consumirPagamentoPendente } from "@/lib/pagamento-pendente";
 import {
   Dialog,
   DialogContent,
@@ -55,7 +57,7 @@ import {
 const SELPICS_URL = "https://jm-studio-fotografico.youfocus.com.br/";
 
 type AlunoView = ApiAluno & {
-  turma?: { nome?: string | null; curso?: string | null; faculdade?: string | null; semestre?: string | null } | null;
+  turma?: { nome?: string | null; curso?: string | null; faculdade?: string | null; semestre?: string | null; observacoes?: string | null } | null;
 };
 
 export const Route = createFileRoute("/_authenticated/painel")({
@@ -97,6 +99,16 @@ function PainelAluno() {
 
   const contrato = (aluno?.contratos as any[] | undefined)?.[0] ?? null;
 
+  /*  Cartao de credito so aparece pro formando quando a empresa liberou na turma.  */
+  const aceitaCartaoTurma = extrairAceitaCartao(aluno?.turma?.observacoes);
+  /*  Banco do boleto/Pix definido na turma (Cora padrao, Asaas se escolhido).  */
+  const bancoDaTurma = extrairBancoBoleto(aluno?.turma?.observacoes);
+
+  /*  Quem acabou de assinar a adesão no cartão chega aqui para PAGAR — o
+      recado é lido uma vez só, senão o checkout reabriria em toda visita.
+      Lido num estado para o consumo não acontecer a cada re-render.  */
+  const [abrirPagamento] = useState(() => consumirPagamentoPendente());
+
   // 3. Check if user is a Demanda Client (Casamento, Festa, Ensaio)
   const demandaCliente: DemandaItem | undefined = (() => {
     if (!userDigits) return undefined;
@@ -110,6 +122,14 @@ function PainelAluno() {
   const parcelas = [...(contrato?.parcelas ?? [])].sort((a, b) => a.numero - b.numero);
   const pago = parcelas.reduce((s, p) => s + Number(p.valorPago), 0) + Number(contrato?.valor_entrada ?? 0);
   const emAberto = parcelas.filter((p) => p.status !== "Pago").reduce((s, p) => s + Number(p.valor), 0);
+
+  /*  A parcela que o checkout abre sozinho depois da adesão: a primeira em
+      aberto.  Sem isto o formando terminava de assinar e tinha que descobrir
+      o botão "Pagar" por conta própria.  */
+  const primeiraEmAbertoId = parcelas.find((p) => p.status !== "Pago")?.id ?? null;
+  /*  O contrato manda no método; "cartao_credito" é o id gravado na adesão.  */
+  const metodoDoContrato =
+    contrato?.formaPagamento === "cartao_credito" ? ("CartaoCredito" as const) : undefined;
 
   // If demanda is found
   const demandaParcelas = demandaCliente?.parcelas ?? [];
@@ -508,7 +528,7 @@ function PainelAluno() {
                       <Info label="Valor Total" value={brl(Number(contrato.valorTotal))} />
                       {Number(contrato.desconto) > 0 && <Info label="Desconto" value={brl(Number(contrato.desconto))} />}
                       {Number(contrato.valorEntrada) > 0 && <Info label="Entrada" value={brl(Number(contrato.valorEntrada))} />}
-                      <Info label="Condição" value={`${contrato.numParcelas}x no ${contrato.formaPagamento || "boleto"}`} />
+                      <Info label="Condição" value={`${contrato.numParcelas}x · ${formaPagamentoLabel(contrato.formaPagamento)}`} />
                       <Info label="Vencimento dos Boletos" value={`Todo dia ${contrato.diaVencimento || 10}`} />
                       <Info
                         label="Uso de Imagem"
@@ -668,6 +688,10 @@ function PainelAluno() {
                                 clienteTelefone={aluno.whatsapp ?? aluno.telefone ?? null}
                                 pacote={contrato.pacote ?? ""}
                                 tipoProjeto="Formatura"
+                                abrirAoMontar={abrirPagamento && p.id === primeiraEmAbertoId}
+                                metodoInicial={metodoDoContrato}
+                                permiteCartao={aceitaCartaoTurma}
+                                bancoPreferido={bancoDaTurma}
                               />
                             )}
                           </div>
