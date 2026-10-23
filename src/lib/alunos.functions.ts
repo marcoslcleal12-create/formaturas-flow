@@ -93,6 +93,11 @@ const adesaoSchema = z.object({
   valorTotal: z.number(),
   numParcelas: z.number(),
   diaVencimento: z.number(),
+
+  /*  O que o formando escolheu no passo 2.  Precisa estar no schema: o zod
+      descarta chave desconhecida, e sem isso a escolha morria aqui e o
+      contrato nascia "boleto" para quem contratou cartão.  */
+  formaPagamento: z.enum(["boleto", "cartao_credito"]).default("boleto"),
   autorizaImagem: z.boolean(),
   textoContratoCompleto: z.string(),
   parcelas: z.array(
@@ -140,6 +145,7 @@ export const realizarAdesaoPublica = createServerFn({ method: "POST" })
         valorTotal: data.valorTotal,
         numParcelas: data.numParcelas,
         diaVencimento: data.diaVencimento,
+        formaPagamento: data.formaPagamento,
         autorizaImagem: data.autorizaImagem,
         textoContratoCompleto: data.textoContratoCompleto,
         parcelas: data.parcelas,

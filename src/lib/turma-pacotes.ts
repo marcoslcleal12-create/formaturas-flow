@@ -1,3 +1,8 @@
+/*  Teto global de parcelas (o JM trabalha com parcelamento longo — turmas que
+    formam daqui a anos). A graduacao pela data da formatura reduz isso quando
+    falta menos tempo (ver parcelasDisponiveis).  */
+export const MAX_PARCELAS = 60
+
 export interface PacoteItem {
   id: string;
   nome: string;
@@ -163,7 +168,7 @@ export function calcularParcelas(
   dataInicio?: Date
 ): ParcelaCalculada[] {
   const parcelas: ParcelaCalculada[] = [];
-  const qtd = Math.min(Math.max(1, numParcelas), 12);
+  const qtd = Math.min(Math.max(1, numParcelas), MAX_PARCELAS);
   const valorParcela = Math.round((valorTotal / qtd) * 100) / 100;
   const valorResidual = Math.round((valorTotal - (valorParcela * qtd)) * 100) / 100;
 
@@ -224,11 +229,14 @@ export function extrairPacotesTurma(
 }
 
 /**
- * Serializa a lista de pacotes mantendo eventuais notas textuais existentes
+ * Serializa a lista de pacotes mantendo eventuais notas textuais existentes.
+ * O 3o argumento grava as regras de parcelamento da turma (maximo de parcelas
+ * e data da formatura/evento) no mesmo JSON de observacoes.
  */
 export function serializarPacotesTurma(
   observacoesAtuais: string | null | undefined,
-  novosPacotes: PacoteItem[]
+  novosPacotes: PacoteItem[],
+  config?: { maxParcelas?: number; dataFormatura?: string | null; aceitaCartao?: boolean; banco?: "cora" | "asaas" }
 ): string {
   let obj: any = {};
   try {
@@ -246,5 +254,109 @@ export function serializarPacotesTurma(
 
   obj.pacotes = novosPacotes;
 
+  if (config) {
+    if (config.maxParcelas != null) obj.maxParcelas = Math.min(Math.max(1, Math.round(config.maxParcelas)), MAX_PARCELAS);
+
+    if (config.dataFormatura) obj.dataFormatura = config.dataFormatura;
+
+    else if (config.dataFormatura === "") delete obj.dataFormatura;
+
+    if (config.aceitaCartao != null) obj.aceitaCartao = !!config.aceitaCartao;
+
+    if (config.banco) obj.banco = config.banco === "asaas" ? "asaas" : "cora";
+  }
+
   return JSON.stringify(obj);
+}
+
+/**
+ * Le o banco do boleto/Pix configurado para a turma (padrao "cora"). "asaas"
+ * manda o boleto/Pix dessa turma pelo Asaas em vez da Cora.
+ */
+export function extrairBancoBoleto(observacoes: string | null | undefined): "cora" | "asaas" {
+  if (!observacoes) return "cora";
+  try {
+    const parsed = JSON.parse(observacoes);
+    return parsed?.banco === "asaas" ? "asaas" : "cora";
+  } catch {
+    return "cora";
+  }
+}
+
+/**
+ * Le se a turma aceita pagamento no cartao de credito (via Asaas). Padrao false
+ * — a empresa precisa habilitar explicitamente ao configurar a turma.
+ */
+export function extrairAceitaCartao(observacoes: string | null | undefined): boolean {
+  if (!observacoes) return false;
+  try {
+    const parsed = JSON.parse(observacoes);
+    return parsed?.aceitaCartao === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Le o maximo de parcelas configurado para a turma (padrao 12).
+ */
+export function extrairMaxParcelas(
+  observacoes: string | null | undefined,
+  fallback = 12
+): number {
+  if (!observacoes) return fallback;
+  try {
+    const parsed = JSON.parse(observacoes);
+    const n = Number(parsed?.maxParcelas);
+    if (Number.isFinite(n) && n >= 1) return Math.min(Math.round(n), MAX_PARCELAS);
+  } catch {
+    /*  observacoes em texto livre  */
+  }
+  return fallback;
+}
+
+/**
+ * Le a data da formatura/evento gravada nas observacoes (ISO yyyy-mm-dd), se houver.
+ */
+export function extrairDataFormatura(observacoes: string | null | undefined): string | null {
+  if (!observacoes) return null;
+  try {
+    const parsed = JSON.parse(observacoes);
+    const d = parsed?.dataFormatura;
+    if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
+  } catch {
+    /*  observacoes em texto livre  */
+  }
+  return null;
+}
+
+/**
+ * Quantos boletos mensais ainda cabem ate a data alvo (mes corrente conta como 1).
+ * Retorna null quando nao ha data; <=0 quando a data ja passou.
+ */
+export function mesesAteData(dataIso: string | null | undefined): number | null {
+  if (!dataIso) return null;
+  const alvo = new Date(`${dataIso.slice(0, 10)}T12:00:00`);
+  if (isNaN(alvo.getTime())) return null;
+  const hoje = new Date();
+  let meses = (alvo.getFullYear() - hoje.getFullYear()) * 12 + (alvo.getMonth() - hoje.getMonth());
+
+  /*  Se o dia do evento ainda nao chegou neste mes, o mes corrente conta.  */
+  if (alvo.getDate() >= hoje.getDate()) meses += 1;
+  return meses;
+}
+
+/**
+ * Parcelas efetivamente disponiveis no link de adesao: o minimo entre o maximo
+ * configurado pela empresa e quantos meses ainda cabem ate a formatura. Sempre
+ * pelo menos 1 (a vista). Assim o parcelamento "gradua" conforme o tempo passa.
+ */
+export function parcelasDisponiveis(
+  maxParcelas: number,
+  dataAlvo?: string | null
+): number {
+  const teto = Math.min(Math.max(1, maxParcelas), MAX_PARCELAS);
+  const meses = mesesAteData(dataAlvo);
+  if (meses == null) return teto;
+  return Math.max(1, Math.min(teto, meses));
 }

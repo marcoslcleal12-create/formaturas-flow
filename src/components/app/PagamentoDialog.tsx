@@ -31,17 +31,18 @@ interface PagamentoDialogProps {
   clienteTelefone?: string | null;
   pacote?: string;
   tipoProjeto?: TipoProjeto;
+  permiteCartao?: boolean;
+  bancoPreferido?: "cora" | "asaas";
+  /*  Já abre aberto: quem acabou de assinar a adesão no cartão cai direto no
+      pagamento, que é o passo que fecha o negócio (e, no cartão, é onde os
+      dados do cartão são digitados — no checkout do Asaas, nunca aqui).  */
+  abrirAoMontar?: boolean;
+  /*  Método que já vem marcado, se o domínio suportar.  O `| undefined` é
+      exigência do `exactOptionalPropertyTypes` deste projeto: quem chama
+      passa `undefined` quando o contrato não diz nada.  */
+  metodoInicial?: MetodoPagamento | undefined;
 }
 
-/*  Dialogo unico de pagamento. Roteia pela nova arquitetura (Cora para
-    Formatura, Asaas para Casamento) chamando POST /api/v1/pagamentos/cobrancas.
-    Fluxo:
-      1. Ao abrir, GET /pagamentos/metodos/{tipoProjeto} para listar
-         Pix/Boleto/Cartao suportados pelo dominio.
-      2. Usuario escolhe o metodo.
-      3. Botao "Gerar cobranca" emite a cobranca de verdade no PSP e
-         renderiza QR (Pix), linha digitavel + link do boleto ou link do
-         checkout do cartao. */
 export function PagamentoDialog({
   parcelaId,
   numero,
@@ -53,8 +54,12 @@ export function PagamentoDialog({
   clienteTelefone,
   pacote = "Serviços Fotográficos",
   tipoProjeto = "Formatura",
+  permiteCartao,
+  bancoPreferido,
+  abrirAoMontar = false,
+  metodoInicial,
 }: PagamentoDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(abrirAoMontar);
   const [metodosDisponiveis, setMetodosDisponiveis] = useState<MetodoPagamento[]>([]);
   const [provider, setProvider] = useState<string>("");
   const [metodoSelecionado, setMetodoSelecionado] = useState<MetodoPagamento | null>(null);
@@ -70,9 +75,16 @@ export function PagamentoDialog({
     listarMetodos(tipoProjeto)
       .then((res) => {
         if (!ativo) return;
-        setMetodosDisponiveis(res.metodos);
+        const metodos = permiteCartao === false
+          ? res.metodos.filter((m) => m !== "CartaoCredito")
+          : res.metodos;
+        setMetodosDisponiveis(metodos);
         setProvider(res.provider);
-        setMetodoSelecionado(res.metodos[0] ?? null);
+        /*  Respeita o que foi contratado; se o domínio não suportar aquele
+            método, cai no primeiro em vez de deixar nada marcado.  */
+        setMetodoSelecionado(
+          (metodoInicial && metodos.includes(metodoInicial) ? metodoInicial : metodos[0]) ?? null,
+        );
       })
       .catch((err) => {
         if (!ativo) return;
@@ -82,7 +94,7 @@ export function PagamentoDialog({
     return () => {
       ativo = false;
     };
-  }, [open, tipoProjeto]);
+  }, [open, tipoProjeto, permiteCartao, metodoInicial]);
 
   const handleReset = () => {
     setCobranca(null);
@@ -110,6 +122,7 @@ export function PagamentoDialog({
           telefone: clienteTelefone ?? null,
         },
         parcelaId,
+        provedor: bancoPreferido ?? null,
       });
       setCobranca(resp);
       toast.success(`Cobrança emitida via ${resp.provider}.`);
